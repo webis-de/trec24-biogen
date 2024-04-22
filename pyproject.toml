@@ -1,0 +1,102 @@
+[project]
+name = "trec-biogen"
+authors = [
+    {name = "Jan Heinrich Reimer", email = "heinrich.reimer@uni-jena.de"},
+]
+description = "Webis at TREC 2024 BioGen."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "annotated-types~=0.6.0",
+    "click~=8.1",
+    "elasticsearch7~=7.17",
+    "elasticsearch7-dsl~=7.3",
+    "importlib-metadata~=7.0",
+    "pandas~=2.0",
+    "pydantic~=2.5",
+    "python-dotenv~=1.0",
+    "python-terrier~=0.10.0",
+    "tqdm~=4.64",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+tests = [
+    "bandit[toml]~=1.7",
+    "mypy~=1.5",
+    "pandas-stubs~=2.0",
+    "pytest~=8.0",
+    "pytest-cov~=5.0",
+    "ruff~=0.3.0",
+    "types-tqdm~=4.66",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/heinrichreimer/trec-biogen"
+"Bug Tracker" = "https://github.com/heinrichreimer/trec-biogen/issues"
+
+[project.scripts]
+trec-biogen = "trec_biogen.cli:cli"
+
+[build-system]
+requires = [
+    "setuptools~=69.0",
+    "setuptools-scm~=8.0",    
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+exclude = [
+    "build",
+    "venv",
+    "notebooks",
+    "data",
+]
+
+[tool.setuptools_scm]
+
+[tool.ruff]
+exclude = [
+    "build",
+    "venv",
+    "notebooks",
+    "data",
+    "scripts",  # FIXME: Include again, after fixing the issues.
+]
+
+[tool.mypy]
+exclude = [
+    "build",
+    "venv",
+    "notebooks",
+    "data",
+    "scripts",  # FIXME: Include again, after fixing the issues.
+]
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = [
+    "build",
+    "venv",
+    "notebooks",
+    "data",
+]
+
+[tool.bandit.assert_used]
+skips = ["**/test_*.py"]
+
+[tool.pytest.ini_options]
+log_cli = "True"
+filterwarnings = [
+    'ignore:FUNCTIONS is deprecated and will be removed in future versions:DeprecationWarning',
+]
