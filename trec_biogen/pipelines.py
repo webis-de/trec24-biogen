@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from functools import cached_property
+from os import environ
 from typing import Any, Hashable
 
+from elasticsearch7 import Elasticsearch
 from elasticsearch7_dsl.query import Query, Match, Exists, Bool
 from pandas import DataFrame
 from pyterrier.transformer import Transformer
@@ -91,10 +93,14 @@ def _build_result(article: Article) -> dict[Hashable, Any]:
 
 @dataclass(frozen=True)
 class Pipeline(Transformer):
-    elasticsearch_url: str
-    elasticsearch_username: str | None
-    elasticsearch_password: str | None
-    elasticsearch_index: str | None
+
+    @cached_property
+    def _elasticsearch(self) -> Elasticsearch:
+        return elasticsearch_connection()
+
+    @cached_property
+    def _elasticsearch_index_pubmed(self) -> str | None:
+        return environ.get("ELASTICSEARCH_INDEX_PUBMED")
 
     @cached_property
     def _pipeline(self) -> Transformer:
@@ -103,15 +109,11 @@ class Pipeline(Transformer):
         # Retrieve or re-rank documents with Elasticsearch (BM25).
         pipeline = pipeline >> ElasticsearchTransformer(
             document_type=Article,
-            client=elasticsearch_connection(
-                elasticsearch_url=self.elasticsearch_url,
-                elasticsearch_username=self.elasticsearch_username,
-                elasticsearch_password=self.elasticsearch_password,
-            ),
+            client=self._elasticsearch,
             query_builder=_build_query,
             result_builder=_build_result,
             num_results=10,
-            index=self.elasticsearch_index,
+            index=self._elasticsearch_index_pubmed,
             verbose=True,
         )
 

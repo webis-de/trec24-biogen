@@ -1,12 +1,13 @@
 
+from os import environ
 from elasticsearch7 import Elasticsearch
 
 
-def elasticsearch_connection(
-    elasticsearch_url: str,
-    elasticsearch_username: str | None,
-    elasticsearch_password: str | None,
-) -> Elasticsearch:
+def elasticsearch_connection() -> Elasticsearch:
+    elasticsearch_url: str = environ["ELASTICSEARCH_URL"]
+    elasticsearch_username: str | None = environ.get("ELASTICSEARCH_USERNAME")
+    elasticsearch_password: str | None = environ.get("ELASTICSEARCH_PASSWORD")
+
     elasticsearch_auth: tuple[str, str] | None
     if elasticsearch_username is not None and elasticsearch_password is None:
         raise ValueError("Must provide both username and password or neither.")
