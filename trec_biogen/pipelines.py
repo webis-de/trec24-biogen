@@ -124,8 +124,8 @@ class Pipeline(Transformer):
         # TODO: Re-rank passages.
 
         # De-passage and aggregate documents.
-        de_passager = MaxPassage()
-        pipeline = pipeline >> de_passager
+        # de_passager = MaxPassage()
+        # pipeline = pipeline >> de_passager
 
         return pipeline
 
