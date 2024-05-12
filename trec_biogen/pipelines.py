@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from os import environ
 from typing import Any, Hashable
+from pyterrier_t5 import MonoT5ReRanker
 
 from elasticsearch7 import Elasticsearch
 from elasticsearch7_dsl.query import Query, Match, Exists, Bool
@@ -94,6 +95,7 @@ def _build_result(article: Article) -> dict[Hashable, Any]:
 @dataclass(frozen=True)
 class Pipeline(Transformer):
 
+    
     @cached_property
     def _elasticsearch(self) -> Elasticsearch:
         return elasticsearch_connection()
@@ -104,6 +106,9 @@ class Pipeline(Transformer):
 
     @cached_property
     def _pipeline(self) -> Transformer:
+
+        monoT5 = MonoT5ReRanker(verbose=True, batch_size=16)
+        
         pipeline = Transformer.identity()
 
         # Retrieve or re-rank documents with Elasticsearch (BM25).
@@ -112,11 +117,10 @@ class Pipeline(Transformer):
             client=self._elasticsearch,
             query_builder=_build_query,
             result_builder=_build_result,
-            num_results=10,
+            num_results=100,
             index=self._elasticsearch_index_pubmed,
             verbose=True,
-        )
-
+        ) >> monoT5
         # TODO: Re-rank documents?
 
         # TODO: Split passages.
