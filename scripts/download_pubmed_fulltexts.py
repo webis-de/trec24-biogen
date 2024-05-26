@@ -67,7 +67,8 @@ if __name__ == "__main__":
 
     API_URL = "https://api.openalex.org/works?per-page=5&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
     FILEPATH = "data/pdf_texts.jsonl.gz"
-    TIMEOUT = 5
+    TIMEOUT_PAPER = 60
+    TIMEOUT_OPENALEX = 120
     LIMIT = 5
     
     
@@ -80,13 +81,14 @@ if __name__ == "__main__":
                 break
 
         print(cursor)
-        response = requests.get(API_URL+cursor)
+        response = requests.get(API_URL+cursor, TIMEOUT_OPENALEX)
 
         pdf_urls_list = [
             (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in response.json().get("results")
         ]
 
-        pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, timeout=TIMEOUT))
+        pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, timeout=TIMEOUT_PAPER
+))
 
         pdf_texts = [(pm_id, extract_text_from_pdf(pdf)) for (pm_id, pdf) in pdfs if pdf is not None]
 
