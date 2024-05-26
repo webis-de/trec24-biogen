@@ -38,7 +38,7 @@ async def _a_download_pdf(pdf_urls, timeout=5):
     start the downloads from all given urls asynchronously and return the first successful download
     '''
 
-    tasks = [get_or_none(pdf_url, timeout=5) for pdf_url in pdf_urls]
+    tasks = [get_or_none(pdf_url, timeout=timeout) for pdf_url in pdf_urls]
     print("Start tasks for pdf_urls: ", pdf_urls)
     responses = await asyncio.gather(*tasks)
     for response in responses:
