@@ -81,7 +81,7 @@ if __name__ == "__main__":
                 break
 
         print(cursor)
-        response = requests.get(API_URL+cursor, TIMEOUT_OPENALEX)
+        response = requests.get(API_URL+cursor, timeout=TIMEOUT_OPENALEX)
 
         pdf_urls_list = [
             (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in response.json().get("results")
