@@ -7,7 +7,7 @@ from elasticsearch7 import Elasticsearch
 from elasticsearch7_dsl.query import Query, Match, Exists, Bool
 from pandas import DataFrame
 from pyterrier.transformer import Transformer
-from pyterrier.text import MaxPassage
+#from pyterrier.text import MaxPassage
 
 from trec_biogen.pubmed import Article
 from trec_biogen.elasticsearch import elasticsearch_connection
