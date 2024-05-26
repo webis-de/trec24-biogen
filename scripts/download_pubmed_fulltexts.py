@@ -57,15 +57,18 @@ def extract_text_from_pdf(pdf):
     '''
     extract text from pdf. Read the text for each page and concatenate them
     '''
-    stream = io.BytesIO(pdf)
-    reader = PdfReader(stream)
-    texts = [*map(lambda x: x.extract_text(), reader.pages)]
-    return " ".join(texts)
+    try:
+        stream = io.BytesIO(pdf)
+        reader = PdfReader(stream)
+        texts = [*map(lambda x: x.extract_text(), reader.pages)]
+        return " ".join(texts)
+    except:
+        return None
 
 
 if __name__ == "__main__":
 
-    API_URL = "https://api.openalex.org/works?per-page=5&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
+    API_URL = "https://api.openalex.org/works?per-page=50&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
     FILEPATH = "data/pdf_texts.jsonl.gz"
     TIMEOUT_PAPER = 60
     TIMEOUT_OPENALEX = 120
@@ -94,7 +97,7 @@ if __name__ == "__main__":
 
         with gz.open(FILEPATH, "at") as f:
             for (pm_id, pdf_text) in pdf_texts:
-                data = json.dumps({"pm_id": pm_id, "pdf_text": pdf_text}).encode("utf-8")
+                data = json.dumps({"pm_id": pm_id, "pdf_text": pdf_text})
                 f.write(f"{data}\n")
 
         cursor = response.json().get("meta").get("next_cursor")
