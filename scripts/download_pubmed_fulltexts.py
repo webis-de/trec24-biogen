@@ -8,6 +8,9 @@ import aiohttp
 import certifi
 import requests
 from pypdf import PdfReader
+import logging
+logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+
 
 
 def get_pdf_urls_for_paper(paper: dict):
@@ -19,36 +22,39 @@ def get_pdf_urls_for_paper(paper: dict):
         )
     )]
 
-async def get_or_none(url, timeout=5):
+async def get_or_none(url, ssl_ctx, timeout=5):
 
     try:
-        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-
-        conn = aiohttp.TCPConnector(ssl=ssl_ctx)
-        print("Start task for url: ", url)
-        async with aiohttp.ClientSession(connector=conn) as session:
+        connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+        logging.info(f"Start task for url: {url}")
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.get(url, allow_redirects=True, timeout=timeout) as response:
                 return await response.read(), response.status
-    except:
+    except aiohttp.ClientError as e:
+        logging.error(f"Error for url {url}: {e}")
+        return None
+    except asyncio.TimeoutError as e:
+        logging.error(f"Timeout for url {url}: {e}")
         return None
 
 
-async def _a_download_pdf(pdf_urls, timeout=5):
+async def _a_download_pdf(pdf_urls, ssl_ctx, timeout=5):
     '''
     start the downloads from all given urls asynchronously and return the first successful download
     '''
-
-    tasks = [get_or_none(pdf_url, timeout=timeout) for pdf_url in pdf_urls]
-    print("Start tasks for pdf_urls: ", pdf_urls)
+    tasks = [get_or_none(pdf_url, ssl_ctx=ssl_ctx, timeout=timeout) for pdf_url in pdf_urls]
     responses = await asyncio.gather(*tasks)
     for response in responses:
         if response and response[1] == 200:
             return response[0]
 
 
-async def _a_download_pdfs_for_urls_list(pdf_urls_list, timeout=5):
-
-    tasks = [(pdf_urls[0], asyncio.create_task(_a_download_pdf(pdf_urls[1], timeout=timeout))) for pdf_urls in pdf_urls_list]
+async def _a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=5):
+    '''
+    call the function _a_download_pdf for each List in a LIST OF LISTS of URLs, each list contains the different urls
+    for the same paper
+    '''
+    tasks = [(pdf_urls[0], asyncio.create_task(_a_download_pdf(pdf_urls[1], ssl_ctx=ssl_ctx, timeout=timeout))) for pdf_urls in pdf_urls_list]
 
     pdf_list = await asyncio.gather(*[task[1] for task in tasks])
     return [(task[0], pdf) for task, pdf in zip(tasks, pdf_list)]
@@ -62,19 +68,21 @@ def extract_text_from_pdf(pdf):
         reader = PdfReader(stream)
         texts = [*map(lambda x: x.extract_text(), reader.pages)]
         return " ".join(texts)
-    except:
+    except Exception as e:
+        print(f"Error extracting text from pdf: {e}")
         return None
 
 
 if __name__ == "__main__":
 
-    API_URL = "https://api.openalex.org/works?per-page=50&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
+    API_URL = "https://api.openalex.org/works?per-page=200&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
     FILEPATH = "data/pdf_texts.jsonl.gz"
-    TIMEOUT_PAPER = 60
-    TIMEOUT_OPENALEX = 120
+    TIMEOUT = 60
     LIMIT = 5
-    
-    
+    downloaded_paper = 0
+
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+
     cursor = "*"
     i = 0
     while cursor is not None:
@@ -84,20 +92,22 @@ if __name__ == "__main__":
                 break
 
         print(cursor)
-        response = requests.get(API_URL+cursor, timeout=TIMEOUT_OPENALEX)
+        response = requests.get(API_URL+cursor)
 
         pdf_urls_list = [
             (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in response.json().get("results")
         ]
 
-        pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, timeout=TIMEOUT_PAPER
-))
+        pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=TIMEOUT))
 
         pdf_texts = [(pm_id, extract_text_from_pdf(pdf)) for (pm_id, pdf) in pdfs if pdf is not None]
 
+        downloaded_paper += len(pdf_texts)
+        logging.info(f"Downloaded {downloaded_paper} pdfs")
+
         with gz.open(FILEPATH, "at") as f:
             for (pm_id, pdf_text) in pdf_texts:
-                data = json.dumps({"pm_id": pm_id, "pdf_text": pdf_text})
+                data = json.dumps({"pm_id": pm_id, "pdf_text": pdf_text}).encode("utf-8")
                 f.write(f"{data}\n")
 
         cursor = response.json().get("meta").get("next_cursor")
