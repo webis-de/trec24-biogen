@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "annotated-types~=0.6.0",
     "click~=8.1",
+    "dspy-ai~=2.4.5",
     "elasticsearch7~=7.17",
     "elasticsearch7-dsl~=7.3",
     "importlib-metadata~=7.0",
