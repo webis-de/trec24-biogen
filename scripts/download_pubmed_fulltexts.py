@@ -3,14 +3,16 @@ import gzip as gz
 import io
 import json
 import ssl
+from pprint import pprint
 
 import aiohttp
 import certifi
 import requests
 from pypdf import PdfReader
 import logging
-logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
+logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s',
+                    level=logging.DEBUG)
 
 
 def get_pdf_urls_for_paper(paper: dict):
@@ -22,8 +24,8 @@ def get_pdf_urls_for_paper(paper: dict):
         )
     )]
 
-async def get_or_none(url, ssl_ctx, timeout=5):
 
+async def get_or_none(url, ssl_ctx, timeout=5):
     try:
         connector = aiohttp.TCPConnector(ssl=ssl_ctx)
         logging.info(f"Start task for url: {url}")
@@ -54,10 +56,12 @@ async def _a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=5):
     call the function _a_download_pdf for each List in a LIST OF LISTS of URLs, each list contains the different urls
     for the same paper
     '''
-    tasks = [(pdf_urls[0], asyncio.create_task(_a_download_pdf(pdf_urls[1], ssl_ctx=ssl_ctx, timeout=timeout))) for pdf_urls in pdf_urls_list]
+    tasks = [(pdf_urls[0], asyncio.create_task(_a_download_pdf(pdf_urls[1], ssl_ctx=ssl_ctx, timeout=timeout))) for
+             pdf_urls in pdf_urls_list]
 
     pdf_list = await asyncio.gather(*[task[1] for task in tasks])
     return [(task[0], pdf) for task, pdf in zip(tasks, pdf_list)]
+
 
 def extract_text_from_pdf(pdf):
     '''
@@ -73,8 +77,31 @@ def extract_text_from_pdf(pdf):
         return None
 
 
-if __name__ == "__main__":
+def download_pds_for_pubmed_ids(pubmed_ids: list[str], ssl_ctx: ssl.SSLContext, timeout: int = 5,
+                                timeout_paper: int = 5) -> list[tuple]:
+    '''
+    download pdf full texts for a list of pubmed ids
+    '''
+    download_url = "https://api.openalex.org/works?per-page=100&select=ids,locations&filter=has_pmid:true,locations.is_oa:true,pmid:"
 
+    pubmed_ids = "|".join(pubmed_ids)
+
+    openalex_response = requests.get(download_url + pubmed_ids)
+
+    pdf_urls_list = [
+        (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in
+        openalex_response.json().get("results")
+    ]
+
+    pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=timeout_paper))
+
+    pdf_texts = [(pm_id, extract_text_from_pdf(pdf)) for (pm_id, pdf) in pdfs if pdf is not None]
+
+    return pdf_texts
+
+
+if __name__ == "__main__":
+    
     API_URL = "https://api.openalex.org/works?per-page=200&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
     FILEPATH = "data/pdf_texts.jsonl.gz"
     TIMEOUT_PAPER = 60
@@ -93,7 +120,7 @@ if __name__ == "__main__":
                 break
 
         print(cursor)
-        response = requests.get(API_URL+cursor, timeout=TIMEOUT_OPENALEX)
+        response = requests.get(API_URL + cursor, timeout=TIMEOUT_OPENALEX)
 
         pdf_urls_list = [
             (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in response.json().get("results")
@@ -112,4 +139,3 @@ if __name__ == "__main__":
                 f.write(f"{data}\n")
 
         cursor = response.json().get("meta").get("next_cursor")
-
