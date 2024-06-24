@@ -158,7 +158,8 @@ async def get_full_text_pdf_urls(
         pubmed_url = paper["ids"]["pmid"]
         _, _, path, _, _ = urlsplit(pubmed_url)
         pubmed_id = Path(path).name
-        yield article_dict.pop(pubmed_id), iter_open_alex_pdf_urls(paper)
+        if pubmed_id in article_dict:
+            yield article_dict.pop(pubmed_id), iter_open_alex_pdf_urls(paper)
     for article in article_dict.values():
         yield article, iter([])
 
