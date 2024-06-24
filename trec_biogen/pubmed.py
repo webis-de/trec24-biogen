@@ -103,3 +103,14 @@ class Article(Document):
         if self.doi is None:
             return None
         return f"https://doi.org/{self.doi}"
+
+
+class FullTextArticle(Article):
+    class Index:
+        settings = {
+            "number_of_shards": 5,
+            "number_of_replicas": 2,
+        }
+
+    full_text: str = Text(required=True)  # type: ignore
+    """Extracted full text of the article."""
