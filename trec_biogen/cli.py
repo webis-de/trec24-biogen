@@ -30,3 +30,7 @@ def cli() -> None:
     if find_dotenv():
         load_dotenv()
 
+
+@cli.command()
+def index_pubmed_full_texts() -> None:
+    raise NotImplementedError()
