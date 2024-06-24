@@ -32,6 +32,23 @@ def cli() -> None:
 
 
 @cli.command()
-def index_pubmed_full_texts() -> None:
-    from trec_biogen.pubmed_fulltexts import index_pubmed_full_texts
-    index_pubmed_full_texts()
+@option(
+    "--dry-run/",
+    type=bool,
+    default=False,
+)
+@option(
+    "--refetch/",
+    type=bool,
+    default=False,
+)
+def index_pubmed_full_texts(
+    dry_run: bool = False,
+    refetch: bool = False,
+) -> None:
+    from asyncio import run
+    from trec_biogen.pubmed_fulltexts import default_index_pubmed_full_texts
+    run(default_index_pubmed_full_texts(
+        dry_run=dry_run,
+        refetch=refetch,
+    ))

@@ -4,11 +4,11 @@ Webis at TREC 2024 BioGen.
 
 ## Installation
 
-1. Install [Python 3.10](https://python.org/downloads/).
+1. Install [Python 3.11](https://python.org/downloads/).
 2. Create and activate a virtual environment:
 
     ```shell
-    python3.10 -m venv venv/
+    python3.11 -m venv venv/
     source venv/bin/activate
     ```
 

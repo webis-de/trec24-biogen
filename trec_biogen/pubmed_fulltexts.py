@@ -1,146 +1,301 @@
-import asyncio
-import gzip as gz
-import io
-import json
-import ssl
-from pprint import pprint
+from asyncio import FIRST_COMPLETED, Task, create_task, wait
+from datetime import UTC, datetime
+from io import BytesIO
+from pathlib import Path
+from ssl import create_default_context
+from typing import Any, AsyncIterable, AsyncIterator, Collection, Iterable, Iterator
+from urllib.parse import urljoin, urlsplit
 
-import aiohttp
-import certifi
-import requests
+from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout, CookieJar, TCPConnector
+from certifi import where
+from elasticsearch7 import AsyncElasticsearch, Elasticsearch
+from elasticsearch7.helpers import async_streaming_bulk
+from elasticsearch7_dsl import Search
+from elasticsearch7_dsl.query import Exists
+from more_itertools import chunked
 from pypdf import PdfReader
-import logging
+from tqdm.asyncio import tqdm
 
-logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s',
-                    level=logging.DEBUG)
+from trec_biogen.elasticsearch import async_elasticsearch_connection, elasticsearch_connection
+from trec_biogen.pubmed import Article
 
 
-def get_pdf_urls_for_paper(paper: dict):
-    return [*map(
-        lambda x: x.get("pdf_url"),
-        filter(
-            lambda x: x.get("is_oa") == True and x.get("pdf_url"),
-            paper.get("locations")
+async def safe_download(session: ClientSession, url: str) -> bytes | None:
+    """
+    Download from HTTP or return None in case of any response, client, or timeout error.
+    """
+    try:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return await response.read()
+    except ClientResponseError:
+        return None
+    except ClientError:
+        return None
+    except TimeoutError:
+        return None
+
+
+def safe_extract_pdf_text(pdf: bytes) -> str | None:
+    """
+    Extract the full text from a PDF file.
+    Reads the text for each page and concatenates the pages' texts.
+    """
+    pdf_start = pdf[:10].strip()
+    if pdf_start.startswith(b"<html") or pdf_start.startswith(b"<!DOCTYPE"):
+        return None
+    with BytesIO(pdf) as stream:
+        try:
+            reader = PdfReader(stream)
+            texts = (
+                page.extract_text(extraction_mode="plain")
+                for page in reader.pages
+            )
+            return "\n".join(texts)
+        except Exception:
+            return None
+
+
+async def safe_download_extract_pdf_text(session: ClientSession, url: str) -> str | None:
+    """
+    Download and extract the full text from a PDF file.
+    """
+    pdf = await safe_download(
+        session=session,
+        url=url,
+    )
+    if pdf is None:
+        return None
+    return safe_extract_pdf_text(pdf)
+
+
+async def safe_download_extract_first_pdf_text(session: ClientSession, urls: Iterable[str]) -> str | None:
+    """
+    Concurrently start HTTP downloads and return the first successfully downloaded and extracted PDF text.
+    """
+    pending: set[Task[str | None]] = {
+        create_task(safe_download_extract_pdf_text(session, url))
+        for url in urls
+    }
+    done: set[Task[str | None]] = set()
+    while len(pending) > 0:
+        done, pending = await wait(pending, return_when=FIRST_COMPLETED)
+        for task in done:
+            response = await task
+            if response is not None:
+                for pending_task in pending:
+                    pending_task.cancel()
+                return response
+    return None
+
+
+async def download_extract_full_text(session: ClientSession, article: Article, urls: Iterable[str]) -> Article:
+    """
+    Return an article with the extracted full text, if any.
+    """
+    full_text = await safe_download_extract_first_pdf_text(
+        session=session,
+        urls=urls,
+    )
+    article.full_text = full_text
+    article.last_fetched_full_text = datetime.now(UTC)
+    return article
+
+
+def iter_open_alex_pdf_urls(article: dict) -> Iterator[str]:
+    for x in article["locations"]:
+        if x["is_oa"] is True and x["pdf_url"]:
+            yield x["pdf_url"]
+
+
+async def get_full_text_pdf_urls(
+    session: ClientSession,
+    articles: Collection[Article],
+    api_base_url: str = "https://api.openalex.org/",
+) -> AsyncIterator[tuple[Article, Iterator[str]]]:
+    if len(articles) > 100:
+        raise ValueError("Cannot fetch more than 100 articles at once.")
+
+    url = urljoin(api_base_url, "works")
+    params = {
+        "per-page": len(articles),
+        "select": ",".join(("ids", "locations")),
+        "filter": ",".join((
+            "has_pmid:true",
+            "locations.is_oa:true",
+            "pmid:"+"|".join(article.pubmed_id for article in articles),
+        ))
+    }
+
+    try:
+        async with session.get(url=url, params=params) as response:
+            response.raise_for_status()
+            json = await response.json()
+    except ClientResponseError:
+        for article in articles:
+            yield article, iter([])
+        return
+    except ClientError:
+        for article in articles:
+            yield article, iter([])
+        return
+    except TimeoutError:
+        for article in articles:
+            yield article, iter([])
+        return
+
+    if not isinstance(json, dict):
+        raise RuntimeError("Could not parse response.")
+
+    if "results" not in json or not isinstance(json["results"], list):
+        raise RuntimeError("Could not parse response.")
+
+    article_dict = {
+        article.pubmed_id: article
+        for article in articles
+    }
+    for paper in json["results"]:
+        pubmed_url = paper["ids"]["pmid"]
+        _, _, path, _, _ = urlsplit(pubmed_url)
+        pubmed_id = Path(path).name
+        yield article_dict.pop(pubmed_id), iter_open_alex_pdf_urls(paper)
+    for article in article_dict.values():
+        yield article, iter([])
+
+
+async def iter_full_text_pdf_urls(
+    session: ClientSession,
+    articles: Iterable[Article],
+    api_base_url: str = "https://api.openalex.org/",
+    chunk_size: int = 100,
+) -> AsyncIterator[tuple[Article, Iterator[str]]]:
+    for chunk in chunked(articles, chunk_size):
+        async for article, urls in get_full_text_pdf_urls(
+            session=session,
+            articles=chunk,
+            api_base_url=api_base_url,
+        ):
+            yield article, urls
+
+
+async def iter_download_extract_full_texts(
+    session: ClientSession,
+    articles: Iterable[Article],
+    api_base_url: str = "https://api.openalex.org/",
+    chunk_size: int = 100,
+) -> AsyncIterator[Article]:
+    full_text_pdf_urls = iter_full_text_pdf_urls(
+        session=session,
+        articles=articles,
+        api_base_url=api_base_url,
+        chunk_size=chunk_size,
+    )
+    async for article, urls in full_text_pdf_urls:
+        yield await download_extract_full_text(
+            session=session,
+            article=article,
+            urls=urls,
         )
-    )]
 
 
-async def get_or_none(url, ssl_ctx, timeout=5):
-    try:
-        connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-        logging.info(f"Start task for url: {url}")
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.get(url, allow_redirects=True, timeout=timeout) as response:
-                return await response.read(), response.status
-    except aiohttp.ClientError as e:
-        logging.error(f"Error for url {url}: {e}")
-        return None
-    except asyncio.TimeoutError as e:
-        logging.error(f"Timeout for url {url}: {e}")
-        return None
+async def index_pubmed_full_texts(
+    session: ClientSession,
+    elasticsearch: Elasticsearch,
+    async_elasticsearch: AsyncElasticsearch,
+    dry_run: bool = False,
+    refetch: bool = False,
+) -> None:
+    Article.init(using=elasticsearch)
+
+    search: Search = Article.search(using=elasticsearch)
+    if not refetch:
+        search = search.filter(~Exists(field="last_fetched_full_text"))
+    total: int = search.count()  # type: ignore
+
+    if refetch:
+        search = search.sort("last_fetched_full_text")
+
+    search = search.extra(_source=["pubmed_id"])
+
+    search = search.params(
+        request_timeout=300,
+        scroll="30m",
+        preserve_order=False,
+        size=1000,
+    )
+
+    articles: Iterable[Article] = search.scan()  # type: ignore
+
+    full_text_articles: AsyncIterable[Article] = iter_download_extract_full_texts(
+        session=session,
+        articles=articles,
+    )
+
+    # Convert to actions that can be processed by Elasticsearch.
+    actions: AsyncIterable[dict] = (
+        {
+            **{
+                "doc" if k == "_source" else k: v
+                for k, v in article.to_dict(include_meta=True).items()
+            },
+            # Ensure that we only update, not create new items.
+            "_op_type": "update",
+        }
+        async for article in full_text_articles
+    )
+    if dry_run:
+        actions = tqdm(  # type: ignore
+            actions,
+            total=total,
+            desc="Fetching full texts",
+            unit="article",
+        )
+        async for _ in actions:
+            pass
+        return
+
+    results: AsyncIterable[tuple[bool, Any]] = async_streaming_bulk(  # noqa: F821
+        client=async_elasticsearch,
+        actions=actions,
+        raise_on_error=True,
+        raise_on_exception=True,
+        max_retries=10,
+        chunk_size=10,
+    )
+    results = tqdm(  # type: ignore
+        results,
+        total=total,
+        desc="Fetching full texts",
+        unit="article",
+    )
+    async for _ in results:
+        pass
 
 
-async def _a_download_pdf(pdf_urls, ssl_ctx, timeout=5):
-    '''
-    start the downloads from all given urls asynchronously and return the first successful download
-    '''
-    tasks = [get_or_none(pdf_url, ssl_ctx=ssl_ctx, timeout=timeout) for pdf_url in pdf_urls]
-    responses = await asyncio.gather(*tasks)
-    for response in responses:
-        if response and response[1] == 200:
-            return response[0]
-
-
-async def _a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=5):
-    '''
-    call the function _a_download_pdf for each List in a LIST OF LISTS of URLs, each list contains the different urls
-    for the same paper
-    '''
-    tasks = [(pdf_urls[0], asyncio.create_task(_a_download_pdf(pdf_urls[1], ssl_ctx=ssl_ctx, timeout=timeout))) for
-             pdf_urls in pdf_urls_list]
-
-    pdf_list = await asyncio.gather(*[task[1] for task in tasks])
-    return [(task[0], pdf) for task, pdf in zip(tasks, pdf_list)]
-
-
-def extract_text_from_pdf(pdf):
-    '''
-    extract text from pdf. Read the text for each page and concatenate them
-    '''
-    try:
-        stream = io.BytesIO(pdf)
-        reader = PdfReader(stream)
-        texts = [*map(lambda x: x.extract_text(), reader.pages)]
-        return " ".join(texts)
-    except Exception as e:
-        print(f"Error extracting text from pdf: {e}")
-        return None
-
-
-def download_pds_for_pubmed_ids(pubmed_ids: list[str], ssl_ctx: ssl.SSLContext, timeout: int = 5,
-                                timeout_paper: int = 5) -> list[tuple]:
-    '''
-    download pdf full texts for a list of pubmed ids
-    '''
-    download_url = "https://api.openalex.org/works?per-page=100&select=ids,locations&filter=has_pmid:true,locations.is_oa:true,pmid:"
-
-    pubmed_ids = "|".join(pubmed_ids)
-
-    openalex_response = requests.get(download_url + pubmed_ids)
-
-    pdf_urls_list = [
-        (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in
-        openalex_response.json().get("results")
-    ]
-
-    pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=timeout_paper))
-
-    pdf_texts = [(pm_id, extract_text_from_pdf(pdf)) for (pm_id, pdf) in pdfs if pdf is not None]
-
-    return pdf_texts
-
-
-
-def index_pubmed_full_texts() -> None:
-    raise NotImplementedError()
-
-
-if __name__ == "__main__":
-    
-    API_URL = "https://api.openalex.org/works?per-page=200&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="
-    FILEPATH = "data/pdf_texts.jsonl.gz"
-    TIMEOUT_PAPER = 60
-    TIMEOUT_OPENALEX = 120
-    LIMIT = 5
-    downloaded_paper = 0
-
-    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-
-    cursor = "*"
-    i = 0
-    while cursor is not None:
-        if LIMIT:
-            i += 1
-            if i > LIMIT:
-                break
-
-        print(cursor)
-        response = requests.get(API_URL + cursor, timeout=TIMEOUT_OPENALEX)
-
-        pdf_urls_list = [
-            (paper.get("ids").get("pmid"), get_pdf_urls_for_paper(paper)) for paper in response.json().get("results")
-        ]
-
-        pdfs = asyncio.run(_a_download_pdfs_for_urls_list(pdf_urls_list, ssl_ctx, timeout=TIMEOUT_PAPER))
-
-        pdf_texts = [(pm_id, extract_text_from_pdf(pdf)) for (pm_id, pdf) in pdfs if pdf is not None]
-
-        downloaded_paper += len(pdf_texts)
-        logging.info(f"Downloaded {downloaded_paper} pdfs")
-
-        with gz.open(FILEPATH, "at") as f:
-            for (pm_id, pdf_text) in pdf_texts:
-                data = json.dumps({"pm_id": pm_id, "pdf_text": pdf_text}).encode("utf-8")
-                f.write(f"{data}\n")
-
-        cursor = response.json().get("meta").get("next_cursor")
+async def default_index_pubmed_full_texts(
+    dry_run: bool = False,
+    refetch: bool = False,
+) -> None:
+    from aiohttp import ClientSession
+    from trec_biogen.pubmed_fulltexts import index_pubmed_full_texts
+    ssl_context = create_default_context(cafile=where())
+    connector = TCPConnector(ssl_context=ssl_context)
+    cookie_jar = CookieJar(unsafe=True)
+    headers = {
+        "User-Agent": "Webis PubMed Full Text Indexer",
+    }
+    timeout = ClientTimeout(total=15, connect=3)
+    async with ClientSession(
+        connector=connector,
+        cookie_jar=cookie_jar,
+        headers=headers,
+        timeout=timeout,
+    ) as session:
+        async with async_elasticsearch_connection() as async_elasticsearch:
+            await index_pubmed_full_texts(
+                session=session,
+                elasticsearch=elasticsearch_connection(),
+                async_elasticsearch=async_elasticsearch,
+                dry_run=dry_run,
+                refetch=refetch,
+            )

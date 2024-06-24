@@ -38,6 +38,7 @@ class MeshTerm(InnerDoc):
 
 class Article(Document):
     class Index:
+        name = "corpus_pubmed_2024"
         settings = {
             "number_of_shards": 3,
             "number_of_replicas": 2,
@@ -87,6 +88,11 @@ class Article(Document):
     """List of languages."""
     source_file: str = Keyword(required=True)  # type: ignore
     """Basename of the XML file that contains this article."""
+    full_text: str | None = Text()  # type: ignore
+    """Extracted full text of the article."""
+    last_fetched_full_text: datetime | None = Date(
+        default_timezone="UTC")  # type: ignore
+    """Last date at which the full text has been extracted."""
 
     @property
     def pubmed_url(self) -> str:
@@ -105,12 +111,3 @@ class Article(Document):
         return f"https://doi.org/{self.doi}"
 
 
-class FullTextArticle(Article):
-    class Index:
-        settings = {
-            "number_of_shards": 5,
-            "number_of_replicas": 2,
-        }
-
-    full_text: str = Text(required=True)  # type: ignore
-    """Extracted full text of the article."""
