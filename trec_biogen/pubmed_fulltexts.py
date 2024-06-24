@@ -100,6 +100,11 @@ def download_pds_for_pubmed_ids(pubmed_ids: list[str], ssl_ctx: ssl.SSLContext, 
     return pdf_texts
 
 
+
+def index_pubmed_full_texts() -> None:
+    raise NotImplementedError()
+
+
 if __name__ == "__main__":
     
     API_URL = "https://api.openalex.org/works?per-page=200&select=ids,locations&filter=has_pmid:true,locations.is_oa:true&cursor="

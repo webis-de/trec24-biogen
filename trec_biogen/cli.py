@@ -33,4 +33,5 @@ def cli() -> None:
 
 @cli.command()
 def index_pubmed_full_texts() -> None:
-    raise NotImplementedError()
+    from trec_biogen.pubmed_fulltexts import index_pubmed_full_texts
+    index_pubmed_full_texts()
