@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+
+SPARK_SUBMIT_TIMEOUT_SECONDS=15
+SPARK_UI_TIMEOUT_SECONDS=60
+
+WEBIS_CEPH_FS_DIR="/mnt/ceph/storage"
+
+WEBIS_SPARK_KUBERNETES_NAMESPACE="spark-jobs"
+
+# Get the Webis username.
+webis_username=""
+echo -n "Enter Webis username: " 
+read webis_username
+
+# Check if the Webis Ceph FS mount exists.
+if ! findmnt "$WEBIS_CEPH_FS_DIR" > /dev/null; then
+    echo "Webis Ceph FS is not mounted."
+    exit 1
+fi
+
+# Create the Spark upload dir if it does not exist yet.
+spark_upload_dir="$WEBIS_CEPH_FS_DIR/data-tmp/current/$webis_username/spark-upload"
+if [ ! -d "$spark_upload_dir" ]; then
+    echo "Spark upload dir does not yet exist. Creating it..."
+    if ! mkdir -p "$spark_upload_dir"; then
+        echo "Failed to create Spark upload dir at: $spark_upload_dir"
+        exit 1
+    fi
+    echo "Successfully created Spark upload dir at: $spark_upload_dir"
+fi
+
+# Check if Kubernetes is set up correctly.
+if ! kubectl auth whoami > /dev/null 2>&1; then
+    echo "Not logged in to Kubernetes. Please log in via https://auth.webis.de/k8s or \`webis k8s login\`."
+    exit 1
+fi
+if ! kubectl -n "$WEBIS_SPARK_KUBERNETES_NAMESPACE" auth can-i create pod > /dev/null 2>&1; then
+    echo "Missing Kubernetes permissions. Please set up role bindings according to https://kb.webis.de/services/apache-spark/."
+    exit 1
+fi
+
+# Inject Webis cluster Spark options.
+spark_options=(
+    "--conf" "spark.master=k8s://https://k8s.srv.webis.de" 
+    "--conf" "spark.kubernetes.container.image=registry.webis.de/code-lib/public-images/webis/spark" 
+    "--conf" "spark.kubernetes.namespace=$WEBIS_SPARK_KUBERNETES_NAMESPACE" 
+    "--conf" "spark.kubernetes.submission.waitAppCompletion=false" 
+    "--conf" "spark.kubernetes.authenticate.driver.serviceAccountName=spark" 
+    "--conf" "spark.kubernetes.driver.annotation.yunikorn.apache.org/allow-preemption=false" 
+    # "--conf" "spark.driver.extraJavaOptions=-Dlog4jspark.root.logger=WARN,console" 
+    "--conf" "spark.kubernetes.file.upload.path=file://$spark_upload_dir" 
+    "--conf" "spark.kubernetes.driver.volumes.hostPath.cephfs.options.path=$spark_upload_dir" 
+    "--conf" "spark.kubernetes.driver.volumes.hostPath.cephfs.mount.path=$spark_upload_dir" 
+    "--deploy-mode" "cluster"
+)
+
+# Deploy Spark application.
+echo "Deploying Spark application on Webis cluster..."
+spark_submit_output=$(timeout $SPARK_SUBMIT_TIMEOUT_SECONDS spark-submit ${spark_options[*]} $@ 2>&1)
+submission_id=$(echo "$spark_submit_output" | grep "Client: Deployed Spark application" | sed -e "s/.*submission ID \(.*\) into Kubernetes/\1/")
+if [[ -z "$submission_id" ]]; then
+    echo "Failed to deploy Spark application on Webis cluster."
+    echo "$spark_submit_output"
+    echo "If you are unsure about the error messages, contact your supervisor or ask in the admin channel."
+    exit 1
+fi
+echo "Successfully deployed Spark application on Webis cluster with submission ID '$submission_id'."
+
+# Parse the namespace and Spark driver name.
+namespace=$(echo "$submission_id" | cut -d ":" -f 1)
+if [[ -z "$namespace" ]]; then
+    echo "Failed to parse Kubernetes namespace from Spark submission ID."
+    exit 1
+fi
+spark_driver_name=$(echo "$submission_id" | cut -d ":" -f 2)
+if [[ -z "$spark_driver_name" ]]; then
+    echo "Failed to parse driver name from Spark submission ID."
+    exit 1
+fi
+
+# Give a hint about how to cancel the Spark application.
+echo "(Note: You can cancel this Spark application at any time by running \`kubectl -n $namespace delete pod $spark_driver_name\`.)"
+
+# Wait for the Spark UI to come online.
+spark_ui_url=$(echo "http://$spark_driver_name-svc.$namespace.svc.cluster.local:4040")
+printf "Waiting for the Spark UI to start..."
+start=$EPOCHSECONDS
+until curl --output /dev/null --silent --head --fail "$spark_ui_url"; do
+    if ((EPOCHSECONDS - start > SPARK_UI_TIMEOUT_SECONDS)); then 
+        echo
+        echo "Failed to find the Spark UI within $SPARK_UI_TIMEOUT_SECONDS seconds."
+        echo "Cancelling Spark application..."
+        kubectl -n "$namespace" delete pod "$spark_driver_name" > /dev/null
+        echo "Successfully cancelled Spark application."
+        exit 1
+    fi
+    printf "."
+    sleep 1
+done
+echo
+
+# Print the URL to the Spark UI.
+echo "Successfully started Spark UI at: $spark_ui_url"
+
+# Give a hint about Spark UI being offline.
+echo "(Note: If the website is offline, it means that your Spark application was cancelled of finished successfully."
