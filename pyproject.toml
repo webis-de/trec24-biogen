@@ -27,6 +27,7 @@ dependencies = [
     "pandas~=2.0",
     "pydantic~=2.5",
     "pypdf~=4.2",
+    "pyspark~=3.5",
     "python-dotenv~=1.0",
     "python-terrier~=0.10.0",
     "tqdm~=4.64",
