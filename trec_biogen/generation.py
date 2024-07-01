@@ -37,7 +37,7 @@ class RetrievalAugmentedGenerationModule(GenerationModule):
     retrieval_module: RetrievalModule
     generation_module: GenerationModule
 
-    todo: Any  # TODO: Define hyper-parameters.
+    todo: Any  # TODO: Define hyper-parameters (e.g., how to use retrieved context for generation).
 
     # TODO: Define parameters (per question) and output(s).
     def generate(self, todo: Any) -> Any:

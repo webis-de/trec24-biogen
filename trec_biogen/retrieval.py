@@ -28,13 +28,13 @@ class PyterrierRetrievalModule(RetrievalModule, Transformer):
 @dataclass(frozen=True)
 class GenerationAugmentedRetrievalModule(RetrievalModule):
     """
-    Retrieve relevant context based on the generated answer context from some generation module, known as Generation-augmented Retrieval.
+    Retrieve relevant context based on the generated answer from some generation module, known as Generation-augmented Retrieval.
     """
 
     generation_module: GenerationModule
     retrieval_module: RetrievalModule
 
-    todo: Any  # TODO: Define hyper-parameters.
+    todo: Any  # TODO: Define hyper-parameters (e.g., how to use answer for retrieval).
 
     # TODO: Define parameters (per question) and output(s).
     def retrieve(self, todo: Any) -> Any:
