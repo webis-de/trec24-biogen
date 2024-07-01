@@ -26,6 +26,7 @@ def elasticsearch_connection() -> Elasticsearch:
         max_retries=10,
     )
 
+
 def async_elasticsearch_connection() -> AsyncElasticsearch:
     elasticsearch_url: str = environ["ELASTICSEARCH_URL"]
     elasticsearch_username: str | None = environ.get("ELASTICSEARCH_USERNAME")
