@@ -21,7 +21,7 @@ class PyterrierRetrievalModule(RetrievalModule, Transformer):
     # TODO: Define parameters (per question) and output(s).
     def retrieve(self, todo: Any) -> Any:
         # TODO: Use PyTerrier's `search()` function to retrieve results for one query.
-        res: DataFrame = self.search(NotImplemented)
+        _res: DataFrame = self.search(NotImplemented)
         return NotImplemented
 
 
