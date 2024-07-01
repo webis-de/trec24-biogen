@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any
 
 from pandas import DataFrame
 from pyterrier.transformer import Transformer
