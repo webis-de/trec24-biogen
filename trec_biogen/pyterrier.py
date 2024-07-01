@@ -5,9 +5,6 @@ from pandas import DataFrame
 from pyterrier.transformer import Transformer
 
 
-
-
-
 @dataclass(frozen=True)
 class CachableTransformer(Transformer):
     wrapped: Transformer = field(repr=False)
