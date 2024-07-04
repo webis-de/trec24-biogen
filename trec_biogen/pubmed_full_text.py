@@ -1,4 +1,5 @@
 from asyncio import FIRST_COMPLETED, Task, create_task, wait
+from asyncio.exceptions import TimeoutError
 from io import BytesIO
 from pathlib import Path
 from ssl import create_default_context
