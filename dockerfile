@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim as python-base
 
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get -y update && \
@@ -20,4 +20,6 @@ RUN --mount=source=.git,target=.git,type=bind \
 
 ADD . .
 
+
+FROM python-base
 ENTRYPOINT ["/venv/bin/python", "-m", "trec-biogen"]
