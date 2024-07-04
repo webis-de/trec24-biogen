@@ -1,9 +1,8 @@
+from importlib.metadata import version
 from typing import Any
 
 from click import group, Context, Parameter, echo, option
 from dotenv import load_dotenv, find_dotenv
-
-from trec_biogen import __version__ as app_version
 
 
 def echo_version(
@@ -13,7 +12,7 @@ def echo_version(
 ) -> None:
     if not value or context.resilient_parsing:
         return
-    echo(app_version)
+    echo(version("trec-biogen"))
     context.exit()
 
 
@@ -42,13 +41,18 @@ def cli() -> None:
     type=bool,
     default=False,
 )
+@option(
+    "--sample",
+    type=float,
+)
 def index_pubmed_full_texts(
     dry_run: bool = False,
     refetch: bool = False,
+    sample: float | None = None,
 ) -> None:
-    from asyncio import run
-    from trec_biogen.pubmed_fulltexts import default_index_pubmed_full_texts
-    run(default_index_pubmed_full_texts(
+    from trec_biogen.jobs.index_pubmed_full_text import index_pubmed_full_texts as _index_pubmed_full_texts
+    _index_pubmed_full_texts(
         dry_run=dry_run,
         refetch=refetch,
-    ))
+        sample=sample,
+    )

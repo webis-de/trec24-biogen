@@ -109,5 +109,3 @@ class Article(Document):
         if self.doi is None:
             return None
         return f"https://doi.org/{self.doi}"
-
-

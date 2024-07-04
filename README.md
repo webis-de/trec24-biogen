@@ -26,6 +26,16 @@ Run the CLI with:
 trec-biogen --help
 ```
 
+### Index PubMed
+
+TODO
+
+### Fetch PubMed full texts
+
+```shell
+ray job submit --runtime-env ray-runtime-env.yml --no-wait -- python -m trec_biogen index-pubmed-full-texts --sample 0.01
+```
+
 ## Development
 
 Refer to the general [installation instructions](#installation) to set up the development environment and install the dependencies.
