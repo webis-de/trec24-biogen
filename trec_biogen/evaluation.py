@@ -1,6 +1,7 @@
 from typing import Literal, TypeAlias
 
-from ir_measures import Measure
+import ir_measures
+from ir_measures import Measure, nDCG, P
 
 from trec_biogen.datasets import GenerationDataset, RetrievalDataset
 from trec_biogen.modules import GenerationModule, RetrievalModule
@@ -15,7 +16,9 @@ def evaluate_retrieval_module(
     measure: RetrievalMeasure,
 ) -> float:
     # TODO: Implement some useful measures using `ir_measures`, e.g., P@1, nDCG@1, nDCG@3, nDCG@10, etc.
-    return NotImplemented
+    qrels = ir_measures.read_trec_qrels(dataset.qrels)
+    run = module.retrieve("todo")
+    return measure.calc_aggregate(qrels, run)
 
 
 GenerationMeasure: TypeAlias = Literal["todo"]
