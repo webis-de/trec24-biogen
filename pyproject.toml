@@ -31,7 +31,7 @@ dependencies = [
     "pypdf~=4.2",
     "python-dotenv~=1.0",
     "python-terrier~=0.10.0",
-    "ray[default,data]~=2.31",
+    "ray[default,data]~=2.32",
     "ray-elasticsearch~=0.2.2",
     "tqdm~=4.64",
 ]
