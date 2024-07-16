@@ -2,6 +2,7 @@ from asyncio import FIRST_COMPLETED, Task, create_task, wait
 from asyncio.exceptions import TimeoutError
 from io import BytesIO
 from pathlib import Path
+from re import UNICODE, compile as re_compile
 from ssl import create_default_context
 from typing import AsyncIterator, Collection, Iterable, Iterator, Mapping
 from urllib.parse import urljoin, urlsplit
@@ -38,6 +39,22 @@ async def safe_download(
         return None
 
 
+def _remove_emojis(text: str) -> str:
+    emoji_pattern = re_compile(
+        "["
+        "\U0001f600-\U0001f64f"  # Emoticons
+        "\U0001f300-\U0001f5ff"  # Symbols and pictographs
+        "\U0001f680-\U0001f6ff"  # Transport and map symbols
+        "\U0001f1e0-\U0001f1ff"  # Flags (iOS)
+        "\U00002702-\U000027b0"
+        "\U000024c2-\U0001f251"
+        "]+",
+        flags=UNICODE,
+    )
+
+    return emoji_pattern.sub(r"", text)
+
+
 def safe_extract_pdf_text(pdf: bytes) -> str | None:
     """
     Extract the full text from a PDF file.
@@ -53,7 +70,9 @@ def safe_extract_pdf_text(pdf: bytes) -> str | None:
                 page.extract_text(extraction_mode="plain")
                 for page in reader.pages
             )
-            return "\n".join(texts)
+            text = "\n".join(texts)
+            text = _remove_emojis(text)
+            return text
         except Exception:
             return None
 
