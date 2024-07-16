@@ -24,7 +24,6 @@ dependencies = [
     "elasticsearch7-dsl~=7.3",
     "jupyter~=1.0",
     "more-itertools~=10.3",
-    "openai~=1.35.3",
     "optuna~=3.6",
     "pandas~=2.0",
     "pyarrow~=16.1",
