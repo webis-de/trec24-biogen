@@ -73,6 +73,8 @@ def safe_extract_pdf_text(pdf: bytes) -> str | None:
             text = "\n".join(texts)
             text = _remove_emojis(text)
             return text
+        except KeyboardInterrupt:
+            return None
         except Exception:
             return None
 
