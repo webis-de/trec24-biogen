@@ -32,6 +32,7 @@ def index_pubmed_full_texts(
             environ["ELASTICSEARCH_USERNAME"],
             environ["ELASTICSEARCH_PASSWORD"],
         ),
+        timeout=60,
         request_timeout=60,
         read_timeout=60,
         max_retries=10,
@@ -49,10 +50,7 @@ def index_pubmed_full_texts(
         else:
             input_table = input_batch
         input_data = input_table.to_pylist()
-        pubmed_ids = {
-            row["_id"]
-            for row in input_data
-        }
+        pubmed_ids = {row["_id"] for row in input_data}
         full_texts = run(get_full_text_dict(pubmed_ids))
         output_table = Table.from_pylist(
             mapping=[
@@ -60,59 +58,69 @@ def index_pubmed_full_texts(
                     "_id": row["_id"],
                     "doc": {
                         "full_text": full_texts[row["_id"]],
-                        "last_fetched_full_text": datetime.now(timezone.utc).isoformat(),
+                        "last_fetched_full_text": datetime.now(
+                            timezone.utc
+                        ).isoformat(),
                     },
                 }
                 for row in input_data
             ],
-            schema=schema([
-                field(name="_id", type=string(), nullable=False),
-                field(
-                    name="doc",
-                    type=struct([
-                        field(
-                            name="full_text",
-                            type=string(),
-                            nullable=True,
+            schema=schema(
+                [
+                    field(name="_id", type=string(), nullable=False),
+                    field(
+                        name="doc",
+                        type=struct(
+                            [
+                                field(
+                                    name="full_text",
+                                    type=string(),
+                                    nullable=True,
+                                ),
+                                field(
+                                    name="last_fetched_full_text",
+                                    type=string(),
+                                    nullable=False,
+                                ),
+                            ]
                         ),
-                        field(
-                            name="last_fetched_full_text",
-                            type=string(),
-                            nullable=False,
-                        ),
-                    ]),
-                    nullable=False,
-                ),
-            ])
+                        nullable=False,
+                    ),
+                ]
+            ),
         )
         return output_table
 
     # Not fetched yet.
     query_not_fetched = ~Exists(field="last_fetched_full_text")
-    query_outdated = Range(last_fetched_full_text={
-        "lt": "now-1M",  # Last fetched over 1 month ago.
-    })
+    query_outdated = Range(
+        last_fetched_full_text={
+            "lt": "now-1M",  # Last fetched over 1 month ago.
+        }
+    )
     source = ElasticsearchDslDatasource(
         index=Article,
-        query=(
-            query_not_fetched | query_outdated
-            if refetch else query_not_fetched
-        ),
+        query=(query_not_fetched | query_outdated if refetch else query_not_fetched),
+        keep_alive="15m",
         client_kwargs=es_kwargs,
-        schema=schema([
-            field(name="_id", type=string(), nullable=False),
-            field(
-                name="_source",
-                type=struct([
-                    field(
-                        name="pubmed_id",
-                        type=string(),
-                        nullable=False,
+        schema=schema(
+            [
+                field(name="_id", type=string(), nullable=False),
+                field(
+                    name="_source",
+                    type=struct(
+                        [
+                            field(
+                                name="pubmed_id",
+                                type=string(),
+                                nullable=False,
+                            ),
+                        ]
                     ),
-                ]),
-                nullable=False,
-            ),
-        ]),
+                    nullable=False,
+                ),
+            ]
+        ),
     )
     sink = ElasticsearchDslDatasink(
         index=Article,
@@ -120,18 +128,26 @@ def index_pubmed_full_texts(
         client_kwargs=es_kwargs,
     )
 
-    data = read_datasource(source)
+    data = read_datasource(source, concurrency=6)  # 3 shards
     if sample is not None:
         data = data.random_sample(fraction=sample, seed=0)
-    data = data.map_batches(get_full_text_batch, batch_size=100)
+    data = data.map_batches(
+        get_full_text_batch,
+        batch_size=10,
+        num_cpus=0.25,
+    )
     if dry_run:
         data = data.filter(lambda x: x["doc"]["full_text"] is not None)
         full_texts = data.take(10)
         for full_text in full_texts:
-            print(full_text["_id"], full_text["doc"]["last_fetched_full_text"],
-                  full_text["doc"]["full_text"][:100].replace("\n", " "))
+            print(
+                full_text["_id"],
+                full_text["doc"]["last_fetched_full_text"],
+                full_text["doc"]["full_text"][:100].replace("\n", " "),
+            )
     else:
-        data.write_datasink(sink)
+        data = data.map_batches(lambda batch: batch, batch_size=500)
+        data.write_datasink(sink, concurrency=6)  # 3 shards
 
 
 if __name__ == "__main__":
