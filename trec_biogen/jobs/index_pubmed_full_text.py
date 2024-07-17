@@ -125,10 +125,13 @@ def index_pubmed_full_texts(
     sink = ElasticsearchDslDatasink(
         index=Article,
         op_type="update",
+        chunk_size=50,
+        initial_backoff=4,
+        max_backoff=600,
         client_kwargs=es_kwargs,
     )
 
-    data = read_datasource(source, concurrency=6)  # 3 shards
+    data = read_datasource(source, concurrency=6)  # 3 shards x 2 threads
     if sample is not None:
         data = data.random_sample(fraction=sample, seed=0)
     data = data.map_batches(
@@ -146,8 +149,7 @@ def index_pubmed_full_texts(
                 full_text["doc"]["full_text"][:100].replace("\n", " "),
             )
     else:
-        data = data.map_batches(lambda batch: batch, batch_size=500)
-        data.write_datasink(sink, concurrency=6)  # 3 shards
+        data.write_datasink(sink, concurrency=3)  # 3 shards x 1 thread
 
 
 if __name__ == "__main__":
