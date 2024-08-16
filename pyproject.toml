@@ -22,6 +22,7 @@ dependencies = [
     "dspy-ai~=2.4.10",
     "elasticsearch7~=7.17",
     "elasticsearch7-dsl~=7.3",
+    "email-validator~=2.2",
     "jupyter~=1.0",
     "more-itertools~=10.3",
     "optuna~=3.6",
