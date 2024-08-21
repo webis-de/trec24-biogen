@@ -1,9 +1,10 @@
 from abc import ABCMeta
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
 from dspy import Module, ProgramMeta
 
+from trec_biogen.model import GenerationAnswer, PartialAnswer
 from trec_biogen.modules import GenerationModule, RetrievalModule
 
 
@@ -23,13 +24,12 @@ class DspyGenerationModule(GenerationModule, Module, metaclass=_ABCProgramMeta):
 
     todo: Any  # TODO: Define hyper-parameters.
 
-    # TODO: Define parameters (per question) and output(s).
-    def generate(self, todo: Any) -> Any:
+    def generate(self, context: PartialAnswer) -> GenerationAnswer:
         return NotImplemented
 
 
 @dataclass(frozen=True)
-class RetrievalAugmentedGenerationModule(GenerationModule):
+class RetrievalThenGenerationModule(GenerationModule):
     """
     Generate an answer based on the retrieved context from some retrieval module, known as Retrieval-augmented Generation.
     """
@@ -37,10 +37,12 @@ class RetrievalAugmentedGenerationModule(GenerationModule):
     retrieval_module: RetrievalModule
     generation_module: GenerationModule
 
-    todo: Any  # TODO: Define hyper-parameters (e.g., how to use retrieved context for generation).
+    def generate(self, context: PartialAnswer) -> GenerationAnswer:
+        context = self.retrieval_module.retrieve(context)
+        return self.generation_module.generate(context)
 
-    # TODO: Define parameters (per question) and output(s).
-    def generate(self, todo: Any) -> Any:
-        foo = self.retrieval_module.retrieve(NotImplemented)
-        bar = self.generation_module.generate(foo)
-        return bar
+    def generate_many(
+        self, contexts: Sequence[PartialAnswer]
+    ) -> Sequence[GenerationAnswer]:
+        contexts = self.retrieval_module.retrieve_many(contexts)
+        return self.generation_module.generate_many(contexts)
