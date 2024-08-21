@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Sequence
+
+from trec_biogen.model import Answer, GenerationAnswer, PartialAnswer, RetrievalAnswer
 
 
 class RetrievalModule(ABC):
@@ -7,13 +9,14 @@ class RetrievalModule(ABC):
     Module to retrieve relevant context for a medical question.
     """
 
-    # TODO: Define parameters and output(s): question, additional context from generation?
     @abstractmethod
-    def retrieve(self, todo: Any) -> Any:
+    def retrieve(self, context: PartialAnswer) -> RetrievalAnswer:
         return NotImplemented
 
-    # TODO (later): Add function to retrieve for multiple queries.
-    #  That would be helpful for bulk-optimizations.
+    def retrieve_many(
+        self, contexts: Sequence[PartialAnswer]
+    ) -> Sequence[RetrievalAnswer]:
+        return [self.retrieve(context) for context in contexts]
 
 
 class GenerationModule(ABC):
@@ -21,10 +24,24 @@ class GenerationModule(ABC):
     Module to generate an answer to a medical question.
     """
 
-    # TODO: Define parameters and output(s): question, additional context from retrieval?
     @abstractmethod
-    def generate(self, todo: Any) -> Any:
+    def generate(self, context: PartialAnswer) -> GenerationAnswer:
         return NotImplemented
 
-    # TODO (later): Add function to generate for multiple questions.
-    #  That would be helpful for bulk-optimizations.
+    def generate_many(
+        self, contexts: Sequence[PartialAnswer]
+    ) -> Sequence[GenerationAnswer]:
+        return [self.generate(context) for context in contexts]
+
+
+class AnsweringModule(ABC):
+    """
+    Module to answer a medical question.
+    """
+
+    @abstractmethod
+    def answer(self, context: PartialAnswer) -> Answer:
+        return NotImplemented
+
+    def answer_many(self, contexts: Sequence[PartialAnswer]) -> Sequence[Answer]:
+        return [self.answer(context) for context in contexts]
