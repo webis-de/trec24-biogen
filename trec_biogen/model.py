@@ -3,7 +3,7 @@ from math import inf
 from pathlib import Path
 from re import compile as re_compile
 from spacy import load as spacy_load
-from typing import Annotated, Literal, Sequence, TypeAlias
+from typing import Annotated, Literal, Self, Sequence, TypeAlias
 
 from annotated_types import Ge
 from pydantic import (
@@ -12,7 +12,9 @@ from pydantic import (
     PlainValidator,
     WithJsonSchema,
     TypeAdapter,
-    Field
+    Field,
+    model_validator,
+    ConfigDict,
 )
 from pydantic.networks import EmailStr, HttpUrl, Url
 from tqdm import tqdm
@@ -64,7 +66,11 @@ QuestionType: TypeAlias = Literal[
     "reasoning",
     "definition",
 ]
+
+
 class Question(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     id: str
     text: str
     type: QuestionType | None
@@ -74,23 +80,42 @@ class Question(BaseModel):
 
 ExactAnswer: TypeAlias = Literal["yes", "no"] | str | Sequence[str]
 
+
 class Snippet(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     text: str
     start_section: str
     start_offset: Annotated[int, Ge(0)]
     end_section: str
     end_offset: Annotated[int, Ge(0)]
 
+
 class PubMedReference(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     pubmed_id: PubMedId
-    rank: Annotated[int, Ge(0)] | None
     snippet: Snippet | None
 
 
+    def as_unranked(self) -> "PubMedReference":
+        return PubMedReference(
+            pubmed_id=self.pubmed_id,
+            snippet=self.snippet,
+        )
+
+class RankedPubMedReference(PubMedReference):
+    model_config = ConfigDict(frozen=True)
+
+    rank: Annotated[int, Ge(0)] | None
+
+
 class PubMedReferenceSentence(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     sentence: str
     references: Sequence[PubMedReference]
-    
+
     def as_trec_bio_gen_answer_sentence(self) -> "TrecBioGenAnswerString":
         reference_string: str
         if len(self.references) > 0:
@@ -108,11 +133,54 @@ class PubMedReferenceSentence(BaseModel):
         else:
             return f"{sentence}{reference_string}."
 
+
 PubMedReferencesSummary: TypeAlias = Sequence[PubMedReferenceSentence]
 
-class Answer(Question):
+
+class PartialAnswer(Question):
+    model_config = ConfigDict(frozen=True)
+
+    summary: PubMedReferencesSummary | None
+    exact: ExactAnswer | None
+    references: Sequence[RankedPubMedReference] | None
+
+    @model_validator(mode="after")
+    def check_references_match(self) -> Self:
+        text_references = (
+            {
+                reference.as_unranked()
+                for sentence in self.summary
+                for reference in sentence.references  # type: ignore
+            }
+            if self.summary is not None
+            else set()
+        )
+        references = {
+            reference.as_unranked()
+            for reference in self.references # type: ignore
+        } if self.references is not None else set()
+        if not text_references.issubset(references):
+            raise ValueError(
+                f"In-text references must be a subset of explicit references. Found {len(text_references - references)} missing references: {text_references - references}"
+            )
+        return self
+
+
+class RetrievalAnswer(PartialAnswer, Question):
+    model_config = ConfigDict(frozen=True)
+
+    references: Sequence[RankedPubMedReference]
+
+
+class GenerationAnswer(PartialAnswer, Question):
+    model_config = ConfigDict(frozen=True)
+
     summary: PubMedReferencesSummary
     exact: ExactAnswer | None
+
+
+class Answer(RetrievalAnswer, GenerationAnswer, PartialAnswer, Question):
+    model_config = ConfigDict(frozen=True)
 
     def as_clef_bio_asq_answer(self) -> "ClefBioAsqAnswer":
         type: ClefBioAsqQuestionType
@@ -124,33 +192,33 @@ class Answer(Question):
             elif self.exact == "no":
                 exact_answer = "no"
             else:
-                raise ValueError(f"Invalid exact answer for yes-no question: {self.exact}")
+                raise ValueError(
+                    f"Invalid exact answer for yes-no question: {self.exact}"
+                )
         elif self.type == "factual":
             type = "factoid"
             if isinstance(self.exact, str):
                 exact_answer = [self.exact]
             else:
-                raise ValueError(f"Invalid exact answer for factual question: {self.exact}")
+                raise ValueError(
+                    f"Invalid exact answer for factual question: {self.exact}"
+                )
         elif self.type == "list":
             type = "list"
-            if isinstance(self.exact, Sequence) and all(isinstance(item, str) for item in self.exact):
-                exact_answer = [
-                    [item]
-                    for item in self.exact
-                ]
+            if isinstance(self.exact, Sequence) and all(
+                isinstance(item, str) for item in self.exact
+            ):
+                exact_answer = [[item] for item in self.exact]
             else:
-                raise ValueError(f"Invalid exact answer for list question: {self.exact}")
+                raise ValueError(
+                    f"Invalid exact answer for list question: {self.exact}"
+                )
         elif self.type == "definition" or self.type == "reasoning":
             exact_answer = "n/a"
         else:
             raise ValueError(f"Unknown question type: {self.type}")
-        references = (
-            reference
-            for sentence in self.summary
-            for reference in sentence.references
-        )
         references = sorted(
-            references,
+            self.references,
             key=lambda reference: reference.rank if reference.rank is not None else inf,
         )
         documents = [
@@ -160,7 +228,9 @@ class Answer(Question):
         ]
         snippets = [
             ClefBioAsqSnippet(
-                document=Url(f"http://www.ncbi.nlm.nih.gov/pubmed/{reference.pubmed_id}"),
+                document=Url(
+                    f"http://www.ncbi.nlm.nih.gov/pubmed/{reference.pubmed_id}"
+                ),
                 text=reference.snippet.text,
                 beginSection=reference.snippet.start_section,
                 offsetInBeginSection=reference.snippet.start_offset,
@@ -184,17 +254,15 @@ class Answer(Question):
         return TrecBioGenAnswer(
             topic_id=self.id,
             answer=" ".join(
-                sentence.as_trec_bio_gen_answer_sentence()
-                for sentence in self.summary
+                sentence.as_trec_bio_gen_answer_sentence() for sentence in self.summary
             ),
             references={
                 reference.pubmed_id
                 for sentence in self.summary
                 for reference in sentence.references
-            }
+            },
         )
-        
-    
+
 
 # CLEF BioASQ model definitions.
 
@@ -208,6 +276,8 @@ ClefBioAsqQuestionType: TypeAlias = Literal[
 
 
 class ClefBioAsqQuestion(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     id: str
     type: ClefBioAsqQuestionType
     body: str
@@ -246,6 +316,8 @@ def _clamp_positive(value: int) -> int:
 
 
 class ClefBioAsqSnippet(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     document: ClefBioAsqDocument
     text: str
     beginSection: str
@@ -305,11 +377,15 @@ def _pubmed_url_to_pubmed_id(pubmed_url: ClefBioAsqDocument) -> PubMedId:
         raise ValueError(f"Invalid PubMed URL: {pubmed_url}")
     return Path(path).name
 
+
 @cache
 def _nlp():
     return spacy_load("en_core_web_sm")
 
+
 class ClefBioAsqAnswer(ClefBioAsqQuestion):
+    model_config = ConfigDict(frozen=True)
+
     documents: ClefBioAsqDocuments
     snippets: ClefBioAsqSnippets
     ideal_answer: ClefBioAsqIdealAnswer
@@ -322,7 +398,7 @@ class ClefBioAsqAnswer(ClefBioAsqQuestion):
             raise ValueError(f"Invalid ideal answer: {self.ideal_answer}")
 
         document_references = [
-            PubMedReference(
+            RankedPubMedReference(
                 pubmed_id=_pubmed_url_to_pubmed_id(document),
                 rank=i + 1,
                 snippet=None,
@@ -330,7 +406,7 @@ class ClefBioAsqAnswer(ClefBioAsqQuestion):
             for i, document in enumerate(self.documents)
         ]
         snippet_references = [
-            PubMedReference(
+            RankedPubMedReference(
                 pubmed_id=_pubmed_url_to_pubmed_id(snippet.document),
                 rank=i + 1,
                 snippet=Snippet(
@@ -344,7 +420,6 @@ class ClefBioAsqAnswer(ClefBioAsqQuestion):
             for i, snippet in enumerate(self.snippets)
         ]
 
-
         references = snippet_references + document_references
 
         ideal_answer = self.ideal_answer[0]
@@ -357,25 +432,37 @@ class ClefBioAsqAnswer(ClefBioAsqQuestion):
             elif self.exact_answer == "no":
                 exact = "no"
             else:
-                raise ValueError(f"Invalid exact answer for yes-no question: {self.exact_answer}")
+                raise ValueError(
+                    f"Invalid exact answer for yes-no question: {self.exact_answer}"
+                )
         elif self.type == "factoid":
-            if isinstance(self.exact_answer, Sequence) and len(self.exact_answer) > 0 and isinstance(self.exact_answer[0], str):
+            if (
+                isinstance(self.exact_answer, Sequence)
+                and len(self.exact_answer) > 0
+                and isinstance(self.exact_answer[0], str)
+            ):
                 exact = self.exact_answer[0]
             else:
-                raise ValueError(f"Invalid exact answer for factual question: {self.exact_answer}")
+                raise ValueError(
+                    f"Invalid exact answer for factual question: {self.exact_answer}"
+                )
         elif self.type == "list":
-            if isinstance(self.exact_answer, Sequence) and all(isinstance(item, Sequence) and len(item) > 0 and isinstance(item[0], str) for item in self.exact_answer):
-                exact = [
-                    item[0]
-                    for item in self.exact_answer
-                ]
+            if isinstance(self.exact_answer, Sequence) and all(
+                isinstance(item, Sequence)
+                and len(item) > 0
+                and isinstance(item[0], str)
+                for item in self.exact_answer
+            ):
+                exact = [item[0] for item in self.exact_answer]
             else:
-                raise ValueError(f"Invalid exact answer for list question: {self.exact_answer}")
+                raise ValueError(
+                    f"Invalid exact answer for list question: {self.exact_answer}"
+                )
         elif self.type == "summary":
             exact = None
         else:
             raise ValueError(f"Unknown question type: {self.type}")
-        
+
         return Answer(
             id=question.id,
             text=question.text,
@@ -390,19 +477,19 @@ class ClefBioAsqAnswer(ClefBioAsqQuestion):
                 for sentence in doc.sents
             ],
             exact=exact,
+            references=references,
         )
 
 
+class ClefBioAsqQuestions(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-class ClefBioAsqInputTest(BaseModel):
     questions: Sequence[ClefBioAsqQuestion]
 
 
-class ClefBioAsqInputTrain(BaseModel):
-    questions: Sequence[ClefBioAsqAnswer]
+class ClefBioAsqAnswers(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-
-class ClefBioAsqOutput(BaseModel):
     questions: Sequence[ClefBioAsqAnswer]
 
 
@@ -410,6 +497,8 @@ class ClefBioAsqOutput(BaseModel):
 
 
 class TrecBioGenQuestion(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     id: int
     topic: str
     question: str
@@ -429,48 +518,23 @@ TrecBioGenAnswerString: TypeAlias = str  # TODO: Add validator.
 
 
 class TrecBioGenAnswer(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     topic_id: str
     answer: TrecBioGenAnswerString
     references: set[PubMedId]
 
 
-class TrecBioGenInputTest(BaseModel):
+class TrecBioGenQuestions(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     topics: Sequence[TrecBioGenQuestion]
 
 
-class TrecBioGenOutput(BaseModel):
+class TrecBioGenAnswers(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     team_id: str
     run_name: str
     contact_email: EmailStr
     results: Sequence[TrecBioGenAnswer]
-
-
-if __name__ == "__main__":
-    # path1 = PROJECT_DIR / "data/BioASQ-task12bPhaseA-testset1.json"
-    # with path1.open("rb") as file:
-    #     input1 = ClefBioAsqInputTest.model_validate_json(file.read())
-    # print(len(input1.questions))
-
-    path2 = PROJECT_DIR / "data/training12b_new.json"
-    with path2.open("rb") as file:
-        input2 = ClefBioAsqInputTrain.model_validate_json(file.read())
-    print(len(input2.questions))
-
-    # path3 = PROJECT_DIR / "data/BioGen2024topics-json.txt"
-    # with path3.open("rb") as file:
-    #     input3 = TrecBioGenInputTest.model_validate_json(file.read())
-    # print(len(input3.topics))
-
-
-    output4 = TrecBioGenOutput(
-        team_id="test_team",
-        run_name="test_run",
-        contact_email="test@example.com",
-        results=list(tqdm((
-            answer.as_answer().as_trec_bio_gen_answer()
-            for answer in input2.questions
-        ), total=len(input2.questions))),
-    )
-    path4 = PROJECT_DIR / "data/training12b_new.trec.json"
-    with path4.open("wt", encoding="utf8") as file:
-        input2 = file.write(output4.model_dump_json(indent=2))
