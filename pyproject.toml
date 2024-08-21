@@ -20,7 +20,7 @@ dependencies = [
     "aiohttp~=3.9",
     "annotated-types~=0.7.0",
     "certifi~=2024.7",
-    "click~=8.1",
+    "cyclopts~=2.9",
     "dspy-ai~=2.4.10",
     "elasticsearch7~=7.17",
     "elasticsearch7-dsl~=7.3",
@@ -58,7 +58,7 @@ tests = [
 "Bug Tracker" = "https://github.com/heinrichreimer/trec-biogen/issues"
 
 [project.scripts]
-trec-biogen = "trec_biogen.cli:cli"
+trec-biogen = "trec_biogen.cli:app"
 
 [build-system]
 requires = [

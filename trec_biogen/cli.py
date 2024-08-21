@@ -1,58 +1,98 @@
-from importlib.metadata import version
-from typing import Any
+from typing import Annotated
 
-from click import group, Context, Parameter, echo, option
+from annotated_types import Interval
+from cyclopts import App, Parameter
+from cyclopts.types import ResolvedFile, ResolvedExistingFile
 from dotenv import load_dotenv, find_dotenv
+from email_validator import validate_email
+
+app = App()
 
 
-def echo_version(
-    context: Context,
-    _parameter: Parameter,
-    value: Any,
-) -> None:
-    if not value or context.resilient_parsing:
-        return
-    echo(version("trec-biogen"))
-    context.exit()
-
-
-@group()
-@option(
-    "-V",
-    "--version",
-    is_flag=True,
-    callback=echo_version,
-    expose_value=False,
-    is_eager=True,
-)
-def cli() -> None:
+@app.meta.default
+def launcher(*tokens: Annotated[str, Parameter(show=False, allow_leading_hyphen=True)]):
     if find_dotenv():
         load_dotenv()
+    command, bound = app.parse_args(tokens)
+    return command(*bound.args, **bound.kwargs)
 
 
-@cli.command()
-@option(
-    "--dry-run/",
-    type=bool,
-    default=False,
-)
-@option(
-    "--refetch/",
-    type=bool,
-    default=False,
-)
-@option(
-    "--sample",
-    type=float,
-)
+@app.command()
 def index_pubmed_full_texts(
     dry_run: bool = False,
     refetch: bool = False,
-    sample: float | None = None,
+    sample: Annotated[float, Interval(ge=0, le=1)] | None = None,
 ) -> None:
-    from trec_biogen.jobs.index_pubmed_full_text import index_pubmed_full_texts as _index_pubmed_full_texts
+    from trec_biogen.jobs.index_pubmed_full_text import (
+        index_pubmed_full_texts as _index_pubmed_full_texts,
+    )
+
     _index_pubmed_full_texts(
         dry_run=dry_run,
         refetch=refetch,
         sample=sample,
+    )
+
+
+parse_app = App(name="parse")
+app.command(parse_app)
+
+
+@parse_app.command()
+def clef_bioasq_questions(
+    path: ResolvedExistingFile,
+) -> None:
+    from trec_biogen.datasets import load_clef_bioasq_questions
+
+    questions = load_clef_bioasq_questions(path, progress=True)
+    print(f"Found {len(questions)} questions in the CLEF BioASQ file.")
+
+
+@parse_app.command()
+def trec_biogen_questions(
+    path: ResolvedExistingFile,
+) -> None:
+    from trec_biogen.datasets import load_trec_biogen_questions
+
+    questions = load_trec_biogen_questions(path, progress=True)
+    print(f"Found {len(questions)} questions in the TREC BioGen file.")
+
+
+@parse_app.command()
+def clef_bioasq_answers(
+    path: ResolvedExistingFile,
+) -> None:
+    from trec_biogen.datasets import load_clef_bioasq_answers
+
+    answers = load_clef_bioasq_answers(path, progress=True)
+    print(f"Found {len(answers)} answers in the CLEF BioASQ file.")
+
+
+convert_app = App(name="convert")
+app.command(convert_app)
+
+
+def _email_validator(type_, value: str) -> None:
+    validate_email(value)
+
+
+@convert_app.command()
+def clef_bioasq_answers_to_trec_biogen_answers(
+    input_path: ResolvedExistingFile,
+    output_path: ResolvedFile,
+    team_id: str,
+    run_name: str,
+    contact_email: Annotated[str, Parameter(validator=_email_validator)],
+) -> None:
+    from trec_biogen.datasets import load_clef_bioasq_answers, save_trec_biogen_answers
+
+    answers = load_clef_bioasq_answers(input_path, progress=True)
+    print(f"Found {len(answers)} answers in the CLEF BioASQ file.")
+    save_trec_biogen_answers(
+        answers=answers,
+        team_id=team_id,
+        run_name=run_name,
+        contact_email=contact_email,
+        path=output_path,
+        progress=True,
     )
