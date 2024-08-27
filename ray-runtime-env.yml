@@ -11,9 +11,12 @@ py_modules:
 pip:
   - aiohttp~=3.9
   - certifi~=2024.7
+  - cyclopts~=2.9
   - elasticsearch7~=7.17
   - elasticsearch7-dsl~=7.3
   - pypdf~=4.2
+  - pydantic[email]~=2.5
   - python-dotenv~=1.0
   - ray-elasticsearch~=0.2.2
+  - tqdm~=4.64
 logging_level: debug
