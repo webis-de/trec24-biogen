@@ -6,11 +6,10 @@ from ir_measures import Precision, nDCG
 from optuna import Study, Trial, create_study
 from optuna.trial import FrozenTrial
 
-from trec_biogen.datasets import GenerationDatasetName, RetrievalDatasetName, load_generation_dataset, load_retrieval_dataset
-from trec_biogen.evaluation import GenerationMeasure, RetrievalMeasure, evaluate_generation_module, evaluate_retrieval_module
-from trec_biogen.generation import DspyGenerationModule, RetrievalAugmentedGenerationModule
+from trec_biogen.evaluation import GenerationMeasure, RetrievalMeasure, evaluate_generation, evaluate_retrieval
+from trec_biogen.generation import DspyGenerationModule, RetrievalThenGenerationModule
 from trec_biogen.modules import GenerationModule, RetrievalModule
-from trec_biogen.retrieval import GenerationAugmentedRetrievalModule, PyterrierRetrievalModule
+from trec_biogen.retrieval import GenerationThenRetrievalModule, PyterrierRetrievalModule
 
 
 def build_retrieval_module(
@@ -117,13 +116,13 @@ def build_generation_augmented_retrieval_module(
         if back_augment:
             todo2 = trial.suggest_float(name="todo", low=-10, high=10)
         for _ in range(num_augmentations):
-            retrieval_module = GenerationAugmentedRetrievalModule(
+            retrieval_module = GenerationThenRetrievalModule(
                 retrieval_module=retrieval_module,
                 generation_module=generation_module,
                 todo=todo1,
             )
             if back_augment:
-                generation_module = RetrievalAugmentedGenerationModule(
+                generation_module = RetrievalThenGenerationModule(
                     generation_module=generation_module,
                     retrieval_module=retrieval_module,
                     todo=todo2,
@@ -161,13 +160,13 @@ def build_retrieval_augmented_generation_module(
         if back_augment:
             todo2 = trial.suggest_float(name="todo", low=-10, high=10)
         for _ in range(num_augmentations):
-            generation_module = RetrievalAugmentedGenerationModule(
+            generation_module = RetrievalThenGenerationModule(
                 generation_module=generation_module,
                 retrieval_module=retrieval_module,
                 todo=todo1,
             )
             if back_augment:
-                retrieval_module = GenerationAugmentedRetrievalModule(
+                retrieval_module = GenerationThenRetrievalModule(
                     retrieval_module=retrieval_module,
                     generation_module=generation_module,
                     todo=todo2,
@@ -190,7 +189,7 @@ def optimize_retrieval_module(
             split="dev",
         )
         metrics = (
-            evaluate_retrieval_module(
+            evaluate_retrieval(
                 module=module,
                 dataset=dataset,
                 measure=measure,
@@ -221,7 +220,7 @@ def optimize_generation_module(
             split="dev",
         )
         metrics = (
-            evaluate_generation_module(
+            evaluate_generation(
                 module=module,
                 dataset=dataset,
                 measure=measure,
@@ -254,7 +253,7 @@ def optimize_retrieval_and_generation_module(
             split="dev",
         )
         retrieval_metrics = (
-            evaluate_retrieval_module(
+            evaluate_retrieval(
                 module=retrieval_module,
                 dataset=retrieval_dataset,
                 measure=measure,
@@ -270,7 +269,7 @@ def optimize_retrieval_and_generation_module(
             split="dev",
         )
         generation_metrics = (
-            evaluate_generation_module(
+            evaluate_generation(
                 module=generation_module,
                 dataset=generation_dataset,
                 measure=measure,
