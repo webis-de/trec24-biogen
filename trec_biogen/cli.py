@@ -1,10 +1,13 @@
-from typing import Annotated
+from typing import Annotated, Iterable
 
-from annotated_types import Interval
+from annotated_types import Ge, Gt, Interval
 from cyclopts import App, Parameter
 from cyclopts.types import ResolvedFile, ResolvedExistingFile
+from cyclopts.validators import Number
 from dotenv import load_dotenv, find_dotenv
 from email_validator import validate_email
+
+from trec_biogen.evaluation import GenerationMeasure, RetrievalMeasure
 
 app = App()
 
@@ -22,16 +25,23 @@ def index_pubmed_full_texts(
     *,
     dry_run: bool = False,
     refetch: bool = False,
-    sample: Annotated[float, Interval(ge=0, le=1)] | None = None,
+    sample: (
+        Annotated[
+            float, Interval(ge=0, le=1), Parameter(validator=Number(gte=0, lte=1))
+        ]
+        | None
+    ) = None,
 ) -> None:
     from trec_biogen.jobs.index_pubmed_full_text import (
         index_pubmed_full_texts as _index_pubmed_full_texts,
     )
+
     _index_pubmed_full_texts(
         dry_run=dry_run,
         refetch=refetch,
         sample=sample,
     )
+
 
 @app.command()
 def index_pubmed_trec_ids(
@@ -42,6 +52,7 @@ def index_pubmed_trec_ids(
     from trec_biogen.jobs.index_pubmed_trec_ids import (
         index_pubmed_trec_ids as _index_pubmed_trec_ids,
     )
+
     _index_pubmed_trec_ids(
         trec_ids_path=trec_ids_path,
         dry_run=dry_run,
@@ -53,33 +64,23 @@ app.command(parse_app)
 
 
 @parse_app.command()
-def clef_bioasq_questions(
+def questions(
     path: ResolvedExistingFile,
 ) -> None:
-    from trec_biogen.datasets import load_clef_bioasq_questions
+    from trec_biogen.datasets import load_questions
 
-    questions = load_clef_bioasq_questions(path, progress=True)
-    print(f"Found {len(questions)} questions in the CLEF BioASQ file.")
+    questions = load_questions(path, progress=True)
+    print(f"Found {len(questions)} questions.")
 
 
 @parse_app.command()
-def trec_biogen_questions(
+def answers(
     path: ResolvedExistingFile,
 ) -> None:
-    from trec_biogen.datasets import load_trec_biogen_questions
+    from trec_biogen.datasets import load_answers
 
-    questions = load_trec_biogen_questions(path, progress=True)
-    print(f"Found {len(questions)} questions in the TREC BioGen file.")
-
-
-@parse_app.command()
-def clef_bioasq_answers(
-    path: ResolvedExistingFile,
-) -> None:
-    from trec_biogen.datasets import load_clef_bioasq_answers
-
-    answers = load_clef_bioasq_answers(path, progress=True)
-    print(f"Found {len(answers)} answers in the CLEF BioASQ file.")
+    answers = load_answers(path, progress=True)
+    print(f"Found {len(answers)} answers.")
 
 
 convert_app = App(name="convert")
@@ -110,4 +111,47 @@ def clef_bioasq_answers_to_trec_biogen_answers(
         contact_email=contact_email,
         path=output_path,
         progress=True,
+    )
+
+
+def _retrieval_measures(type_, *values):
+    from ir_measures import parse_measure
+
+    return [parse_measure(value) for value in values]
+
+
+@app.command()
+def optimize(
+    answers_path: ResolvedExistingFile,
+    *,
+    sample: Annotated[
+        float, Interval(ge=0, le=1), Parameter(validator=Number(gte=0, lte=1))
+    ] = 1,
+    retrieval_measures: Annotated[
+        Iterable[RetrievalMeasure], Parameter(converter=_retrieval_measures)
+    ] = [],
+    generation_measures: Iterable[GenerationMeasure] = [],
+    trials: Annotated[int, Ge(1), Parameter(validator=Number(gte=1))] | None = None,
+    timeout: Annotated[float, Gt(0), Parameter(validator=Number(gt=0))] | None = None,
+    parallelism: Annotated[int, Ge(1), Parameter(validator=Number(gte=1))] = 1,
+    progress: bool = False,
+) -> None:
+    from trec_biogen.datasets import load_answers
+    from trec_biogen.optimization import optimize_answering_module
+
+    answers = load_answers(
+        path=answers_path,
+        sample=sample,
+        progress=True,
+    )
+    print(f"Found {len(answers)} answers.")
+
+    optimize_answering_module(
+        ground_truth=answers,
+        retrieval_measures=retrieval_measures,
+        generation_measures=generation_measures,
+        trials=trials,
+        timeout=timeout,
+        parallelism=parallelism,
+        progress=progress,
     )
