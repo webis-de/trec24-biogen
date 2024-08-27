@@ -1,6 +1,8 @@
 from pathlib import Path
-from typing import Iterable, Sequence
+from random import sample as random_sample
+from typing import Annotated, Iterable, Sequence
 
+from annotated_types import Interval
 from pydantic.networks import EmailStr
 from tqdm import tqdm
 
@@ -19,38 +21,82 @@ from trec_biogen.model import (
 
 def load_clef_bioasq_questions(
     path: Path,
+    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
     progress: bool = False,
 ) -> Sequence[Question]:
     with path.open("rb") as file:
         input = ClefBioAsqQuestions.model_validate_json(file.read())
-    questions: Iterable[ClefBioAsqQuestion] = input.questions
+    questions = input.questions
+    if sample < 1:
+        questions = random_sample(questions, k=round(len(questions) * sample))
+    questions_iterable: Iterable[ClefBioAsqQuestion] = questions
     if progress:
-        questions = tqdm(questions, desc="Convert questions", unit="question")
-    return [question.as_question() for question in questions]
+        questions_iterable = tqdm(
+            questions_iterable, desc="Convert questions", unit="question"
+        )
+    return [question.as_question() for question in questions_iterable]
 
 
 def load_trec_biogen_questions(
     path: Path,
+    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
     progress: bool = False,
 ) -> Sequence[Question]:
     with path.open("rb") as file:
         input = TrecBioGenQuestions.model_validate_json(file.read())
-    topics: Iterable[TrecBioGenQuestion] = input.topics
+    topics = input.topics
+    if sample < 1:
+        topics = random_sample(topics, k=round(len(topics) * sample))
+    topics_iterable: Iterable[TrecBioGenQuestion] = topics
     if progress:
-        topics = tqdm(topics, desc="Convert questions", unit="question")
-    return [question.as_question() for question in topics]
+        topics_iterable = tqdm(
+            topics_iterable, desc="Convert questions", unit="question"
+        )
+    return [question.as_question() for question in topics_iterable]
+
+
+def load_questions(
+    path: Path,
+    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    progress: bool = False,
+) -> Sequence[Question]:
+    if path.name.startswith("BioASQ") and path.name.endswith(".json"):
+        return load_clef_bioasq_questions(path, sample=sample, progress=progress)
+    elif path.name.startswith("training") and path.name.endswith("_new.json"):
+        return load_clef_bioasq_questions(path, sample=sample, progress=progress)
+    elif path.name.startswith("BioGen") and path.name.endswith("-json.txt"):
+        return load_trec_biogen_questions(path, sample=sample, progress=progress)
+    else:
+        raise RuntimeError(f"Could not guess question format from file: {path}")
 
 
 def load_clef_bioasq_answers(
     path: Path,
+    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
     progress: bool = False,
 ) -> Sequence[Answer]:
     with path.open("rb") as file:
         input = ClefBioAsqAnswers.model_validate_json(file.read())
-    questions: Iterable[ClefBioAsqAnswer] = input.questions
+    questions = input.questions
+    if sample < 1:
+        questions = random_sample(questions, k=round(len(questions) * sample))
+    questions_iterable: Iterable[ClefBioAsqAnswer] = questions
     if progress:
-        questions = tqdm(questions, desc="Convert answers", unit="answer")
-    return [question.as_answer() for question in input.questions]
+        questions_iterable = tqdm(
+            questions_iterable, desc="Convert answers", unit="answer"
+        )
+    return [question.as_answer() for question in questions_iterable]
+
+
+def load_answers(
+    path: Path,
+    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    progress: bool = False,
+) -> Sequence[Answer]:
+    if path.name.startswith("training") and path.name.endswith("_new.json"):
+        return load_clef_bioasq_answers(path, sample=sample, progress=progress)
+    else:
+        raise RuntimeError(f"Could not guess answer format from file: {path}")
 
 
 def save_clef_bioasq_answers(
