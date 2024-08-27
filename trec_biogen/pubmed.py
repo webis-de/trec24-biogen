@@ -93,6 +93,8 @@ class Article(Document):
     last_fetched_full_text: datetime | None = Date(
         default_timezone="UTC")  # type: ignore
     """Last date at which the full text has been extracted."""
+    is_included_trec_biogen_2024: bool | None = Keyword()  # type: ignore
+    """Whether the article is in the subset used for TREC BioGen 2024."""
 
     @property
     def pubmed_url(self) -> str:

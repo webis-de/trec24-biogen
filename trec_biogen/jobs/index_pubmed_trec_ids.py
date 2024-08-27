@@ -1,3 +1,4 @@
+from gzip import open as gzip_open
 from os import environ
 from pathlib import Path
 
@@ -6,9 +7,10 @@ from elasticsearch7 import Elasticsearch
 from pandas import DataFrame
 from pyarrow import Table, field, schema, string, struct, bool_
 from ray import init
-from ray.data import read_text
+from ray.data import from_items
 from ray.data.block import DataBatch
 from ray_elasticsearch import ElasticsearchDslDatasink
+from tqdm import tqdm
 
 from trec_biogen.pubmed import Article
 
@@ -49,9 +51,9 @@ def index_pubmed_trec_ids(
         output_table = Table.from_pylist(
             mapping=[
                 {
-                    "_id": row["text"],
+                    "_id": row["item"],
                     "doc": {
-                        "is_trec_biogen_2024": True,
+                        "is_included_trec_biogen_2024": True,
                     },
                 }
                 for row in input_data
@@ -64,7 +66,7 @@ def index_pubmed_trec_ids(
                         type=struct(
                             [
                                 field(
-                                    name="is_trec_biogen_2024",
+                                    name="is_included_trec_biogen_2024",
                                     type=bool_(),
                                     nullable=False,
                                 ),
@@ -86,21 +88,26 @@ def index_pubmed_trec_ids(
         client_kwargs=es_kwargs,
     )
 
-    data = read_text(f"local://{trec_ids_path.absolute()}")
+    with gzip_open(trec_ids_path, "rt", encoding="utf8") as file:
+        trec_ids = [
+            line.strip()
+            for line in tqdm(file)
+        ]
+
+    data = from_items(trec_ids)
     data = data.map_batches(
         _map_ids_batch,
-        batch_size=10,
+        batch_size=100,
         num_cpus=0.25,
         concurrency=6,
     )
     if dry_run:
-        data = data.filter(lambda x: x["doc"]["full_text"] is not None)
+        data = data.filter(lambda x: x["doc"]["is_included_trec_biogen_2024"])
         full_texts = data.take(10)
         for full_text in full_texts:
             print(
                 full_text["_id"],
-                full_text["doc"]["is_trec_biogen_2024"],
-                full_text["doc"]["full_text"][:100].replace("\n", " "),
+                full_text["doc"]["is_included_trec_biogen_2024"],
             )
     else:
         data.write_datasink(sink, concurrency=3)  # 3 shards x 1 thread
