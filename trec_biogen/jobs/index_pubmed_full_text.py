@@ -150,7 +150,3 @@ def index_pubmed_full_texts(
             )
     else:
         data.write_datasink(sink, concurrency=3)  # 3 shards x 1 thread
-
-
-if __name__ == "__main__":
-    index_pubmed_full_texts()
