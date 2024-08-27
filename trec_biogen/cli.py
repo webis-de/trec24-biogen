@@ -19,6 +19,7 @@ def launcher(*tokens: Annotated[str, Parameter(show=False, allow_leading_hyphen=
 
 @app.command()
 def index_pubmed_full_texts(
+    *,
     dry_run: bool = False,
     refetch: bool = False,
     sample: Annotated[float, Interval(ge=0, le=1)] | None = None,
@@ -26,11 +27,24 @@ def index_pubmed_full_texts(
     from trec_biogen.jobs.index_pubmed_full_text import (
         index_pubmed_full_texts as _index_pubmed_full_texts,
     )
-
     _index_pubmed_full_texts(
         dry_run=dry_run,
         refetch=refetch,
         sample=sample,
+    )
+
+@app.command()
+def index_pubmed_trec_ids(
+    trec_ids_path: ResolvedExistingFile,
+    *,
+    dry_run: bool = False,
+) -> None:
+    from trec_biogen.jobs.index_pubmed_trec_ids import (
+        index_pubmed_trec_ids as _index_pubmed_trec_ids,
+    )
+    _index_pubmed_trec_ids(
+        trec_ids_path=trec_ids_path,
+        dry_run=dry_run,
     )
 
 
@@ -80,6 +94,7 @@ def _email_validator(type_, value: str) -> None:
 def clef_bioasq_answers_to_trec_biogen_answers(
     input_path: ResolvedExistingFile,
     output_path: ResolvedFile,
+    *,
     team_id: str,
     run_name: str,
     contact_email: Annotated[str, Parameter(validator=_email_validator)],
