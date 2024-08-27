@@ -1,15 +1,23 @@
-from statistics import mean
-from typing import Iterable, Literal
+from typing import Iterable, Literal, Sequence
 
 from dspy.teleprompt import LabeledFewShot
-from ir_measures import Precision, nDCG
 from optuna import Study, Trial, create_study
 from optuna.trial import FrozenTrial
 
-from trec_biogen.evaluation import GenerationMeasure, RetrievalMeasure, evaluate_generation, evaluate_retrieval
+from trec_biogen.answering import IndependentAnsweringModule, RecurrentAnsweringModule
+from trec_biogen.evaluation import (
+    GenerationMeasure,
+    RetrievalMeasure,
+    evaluate_generation,
+    evaluate_retrieval,
+)
 from trec_biogen.generation import DspyGenerationModule, RetrievalThenGenerationModule
-from trec_biogen.modules import GenerationModule, RetrievalModule
-from trec_biogen.retrieval import GenerationThenRetrievalModule, PyterrierRetrievalModule
+from trec_biogen.model import Answer
+from trec_biogen.modules import AnsweringModule, GenerationModule, RetrievalModule
+from trec_biogen.retrieval import (
+    GenerationThenRetrievalModule,
+    PyterrierRetrievalModule,
+)
 
 
 def build_retrieval_module(
@@ -98,35 +106,27 @@ def build_generation_augmented_retrieval_module(
     retrieval_module = build_retrieval_module(trial=trial)
     generation_module = build_generation_module(trial=trial)
 
-    # How often should we "loop" the generation augmented retrieval?
+    # How often should we "cycle" the generation augmented retrieval?
     num_augmentations = trial.suggest_int(
-        name="num_augmentations",
-        low=0,
+        name="generation_augmented_retrieval_num_augmentations",
+        low=1,
         high=10,
     )
     # Should we also augment the generation module after augmenting the retrieval module or keep the generation module fixed?
     back_augment = trial.suggest_categorical(
-        name="back_augment",
-        choices=[False, True]
+        name="generation_augmented_retrieval_back_augment", choices=[False, True]
     )
-    if num_augmentations > 0:
-        # TODO: Define all hyperparameters needed for the augmentations.
-        todo1 = trial.suggest_float(name="todo", low=-10, high=10)
-        # TODO: Define all hyperparameters needed for the back augmentations.
+
+    for _ in range(num_augmentations):
+        retrieval_module = GenerationThenRetrievalModule(
+            retrieval_module=retrieval_module,
+            generation_module=generation_module,
+        )
         if back_augment:
-            todo2 = trial.suggest_float(name="todo", low=-10, high=10)
-        for _ in range(num_augmentations):
-            retrieval_module = GenerationThenRetrievalModule(
-                retrieval_module=retrieval_module,
+            generation_module = RetrievalThenGenerationModule(
                 generation_module=generation_module,
-                todo=todo1,
+                retrieval_module=retrieval_module,
             )
-            if back_augment:
-                generation_module = RetrievalThenGenerationModule(
-                    generation_module=generation_module,
-                    retrieval_module=retrieval_module,
-                    todo=todo2,
-                )
 
     return retrieval_module
 
@@ -142,161 +142,176 @@ def build_retrieval_augmented_generation_module(
     generation_module = build_generation_module(trial=trial)
     retrieval_module = build_retrieval_module(trial=trial)
 
-    # How often should we "loop" the retrieval augmented generation?
+    # How often should we "cycle" the generation augmented retrieval?
     num_augmentations = trial.suggest_int(
-        name="num_augmentations",
-        low=0,
+        name="retrieval_augmented_generation_num_augmentations",
+        low=1,
         high=10,
     )
     # Should we also augment the retrieval module after augmenting the generation module or keep the retrieval module fixed?
     back_augment = trial.suggest_categorical(
-        name="back_augment",
-        choices=[False, True]
+        name="retrieval_augmented_generation_back_augment", choices=[False, True]
     )
-    if num_augmentations > 0:
-        # TODO: Define all hyperparameters needed for the augmentations.
-        todo1 = trial.suggest_float(name="todo", low=-10, high=10)
-        # TODO: Define all hyperparameters needed for the back augmentations.
+
+    for _ in range(num_augmentations):
+        generation_module = RetrievalThenGenerationModule(
+            generation_module=generation_module,
+            retrieval_module=retrieval_module,
+        )
         if back_augment:
-            todo2 = trial.suggest_float(name="todo", low=-10, high=10)
-        for _ in range(num_augmentations):
-            generation_module = RetrievalThenGenerationModule(
-                generation_module=generation_module,
+            retrieval_module = GenerationThenRetrievalModule(
                 retrieval_module=retrieval_module,
-                todo=todo1,
+                generation_module=generation_module,
             )
-            if back_augment:
-                retrieval_module = GenerationThenRetrievalModule(
-                    retrieval_module=retrieval_module,
-                    generation_module=generation_module,
-                    todo=todo2,
-                )
 
     return generation_module
 
 
-def optimize_retrieval_module(
-    dataset_name: RetrievalDatasetName,
-    measures: Iterable[RetrievalMeasure],
-) -> FrozenTrial:
+def build_answering_module_no_augmentation(
+    trial: Trial,
+) -> AnsweringModule:
+    """
+    Build a answering module that uses generation and retrieval modules independently without any augmentation.
+    """
 
-    def objective(trial: Trial) -> float:
-        module = build_generation_augmented_retrieval_module(
-            trial=trial,
-        )
-        dataset = load_retrieval_dataset(
-            dataset_name=dataset_name,
-            split="dev",
-        )
-        metrics = (
-            evaluate_retrieval(
-                module=module,
-                dataset=dataset,
-                measure=measure,
-            )
-            for measure in measures
-        )
-        return mean(metrics)
+    # Build simple generation and retrieval modules.
+    generation_module = build_generation_module(trial=trial)
+    retrieval_module = build_retrieval_module(trial=trial)
 
-    study: Study = create_study()
-    study.optimize(
-        func=objective,
-        n_trials=100,
+    # Compose answering module.
+    return IndependentAnsweringModule(
+        generation_module=generation_module,
+        retrieval_module=retrieval_module,
     )
-    return study.best_trial
 
 
-def optimize_generation_module(
-    dataset_name: GenerationDatasetName,
-    measures: Iterable[GenerationMeasure],
-) -> FrozenTrial:
+def build_answering_module_independent_augmentation(
+    trial: Trial,
+) -> AnsweringModule:
+    """
+    Build a answering module that uses generation and retrieval modules independently while augmenting generation and retrieval individually.
+    """
 
-    def objective(trial: Trial) -> float:
-        module = build_retrieval_augmented_generation_module(
-            trial=trial,
-        )
-        dataset = load_generation_dataset(
-            dataset_name=dataset_name,
-            split="dev",
-        )
-        metrics = (
-            evaluate_generation(
-                module=module,
-                dataset=dataset,
-                measure=measure,
-            )
-            for measure in measures
-        )
-        return mean(metrics)
+    # Build augmented generation and retrieval modules.
+    generation_module = build_retrieval_augmented_generation_module(trial=trial)
+    retrieval_module = build_generation_augmented_retrieval_module(trial=trial)
 
-    study: Study = create_study()
-    study.optimize(
-        func=objective,
-        n_trials=100,
+    # Compose answering module.
+    return IndependentAnsweringModule(
+        generation_module=generation_module,
+        retrieval_module=retrieval_module,
     )
-    return study.best_trial
 
 
-def optimize_retrieval_and_generation_module(
-    retrieval_dataset_name: RetrievalDatasetName,
+def build_answering_module_cross_augmentation(
+    trial: Trial,
+) -> AnsweringModule:
+    """
+    Build a answering module that uses generation and retrieval modules recurrently while feeding back the outputs from the generation module to the retrieval module and vice-versa.
+    """
+
+    # Build simple generation and retrieval modules.
+    generation_module = build_generation_module(trial=trial)
+    retrieval_module = build_retrieval_module(trial=trial)
+
+    # Compose answering module.
+    answering_module = IndependentAnsweringModule(
+        generation_module=generation_module,
+        retrieval_module=retrieval_module,
+    )
+
+    # Recurrently cross-augment the generation and retrieval.
+    steps = trial.suggest_int(
+        name="answering_module_cross_augmentation_steps",
+        low=1,
+        high=10,
+    )
+    return RecurrentAnsweringModule(
+        answering_module=answering_module,
+        steps=steps,
+    )
+
+
+def build_answering_module(
+    trial: Trial,
+) -> AnsweringModule:
+    """
+    Build a answering module with or without augmenting the generation and retrieval modules.
+    """
+
+    # Which augmentation type/strategy should we apply?
+    augmentation_type = trial.suggest_categorical(
+        name="answering_module_type",
+        choices=[
+            "no augmentation",
+            "independent augmentation",
+            "cross augmentation",
+        ],
+    )
+    if augmentation_type == "no augmentation":
+        return build_answering_module_no_augmentation(trial)
+    elif augmentation_type == "independent augmentation":
+        return build_answering_module_independent_augmentation(trial)
+    elif augmentation_type == "cross augmentation":
+        return build_answering_module_cross_augmentation(trial)
+    else:
+        raise ValueError(f"Unknown augmentation type: {augmentation_type}")
+
+
+def optimize_answering_module(
+    ground_truth: Sequence[Answer],
     retrieval_measures: Iterable[RetrievalMeasure],
-    generation_dataset_name: GenerationDatasetName,
     generation_measures: Iterable[GenerationMeasure],
+    trials: int | None = None,
+    timeout: float | None = None,
+    parallelism: int = 1,
+    progress: bool = False,
 ) -> FrozenTrial:
+    questions = [answer.as_question() for answer in ground_truth]
+    contexts = [question.as_partial_answer() for question in questions]
 
-    def objective(trial: Trial) -> float:
-        retrieval_module = build_generation_augmented_retrieval_module(
-            trial=trial,
-        )
-        retrieval_dataset = load_retrieval_dataset(
-            dataset_name=retrieval_dataset_name,
-            split="dev",
-        )
+    def objective(trial: Trial) -> Sequence[float]:
+        module = build_answering_module(trial)
+        predictions = module.answer_many(contexts)
         retrieval_metrics = (
             evaluate_retrieval(
-                module=retrieval_module,
-                dataset=retrieval_dataset,
+                ground_truth=ground_truth,
+                predictions=predictions,
                 measure=measure,
             )
             for measure in retrieval_measures
         )
-
-        generation_module = build_retrieval_augmented_generation_module(
-            trial=trial,
-        )
-        generation_dataset = load_generation_dataset(
-            dataset_name=generation_dataset_name,
-            split="dev",
-        )
         generation_metrics = (
             evaluate_generation(
-                module=generation_module,
-                dataset=generation_dataset,
+                ground_truth=ground_truth,
+                predictions=predictions,
                 measure=measure,
             )
             for measure in generation_measures
         )
-
-        return mean([*retrieval_metrics, *generation_metrics])
+        return (*retrieval_metrics, *generation_metrics)
 
     study: Study = create_study()
     study.optimize(
         func=objective,
-        n_trials=100,
+        n_trials=trials,
+        timeout=timeout,
+        n_jobs=parallelism,
+        show_progress_bar=progress,
     )
     return study.best_trial
 
 
-if __name__ == "main":
-    trial = optimize_retrieval_and_generation_module(
-        retrieval_dataset_name="bioasq-task-b",
-        retrieval_measures=[
-            Precision@1,  # type: ignore
-            nDCG,
-        ],
-        generation_dataset_name="bioasq-task-b",
-        generation_measures=[
-            "todo"  # TODO: Use the implemented measures.
-        ],
-    )
-    print(trial)
+# if __name__ == "main":
+#     trial = optimize_retrieval_and_generation_module(
+#         retrieval_dataset_name="bioasq-task-b",
+#         retrieval_measures=[
+#             Precision@1,  # type: ignore
+#             nDCG,
+#         ],
+#         generation_dataset_name="bioasq-task-b",
+#         generation_measures=[
+#             "todo"  # TODO: Use the implemented measures.
+#         ],
+#     )
+#     print(trial)
