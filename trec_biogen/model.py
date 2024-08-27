@@ -17,9 +17,7 @@ from pydantic import (
     ConfigDict,
 )
 from pydantic.networks import EmailStr, HttpUrl, Url
-from tqdm import tqdm
 
-from trec_biogen import PROJECT_DIR
 
 # Generic PubMed model definitions.
 
@@ -77,6 +75,18 @@ class Question(BaseModel):
     query: str | None
     narrative: str | None
 
+    def as_partial_answer(self) -> "PartialAnswer":
+        return PartialAnswer(
+            id=self.id,
+            text=self.text,
+            type=self.type,
+            query=self.query,
+            narrative=self.narrative,
+            summary=None,
+            exact=None,
+            references=None,
+        )
+
 
 ExactAnswer: TypeAlias = Literal["yes", "no"] | str | Sequence[str]
 
@@ -97,12 +107,12 @@ class PubMedReference(BaseModel):
     pubmed_id: PubMedId
     snippet: Snippet | None
 
-
     def as_unranked(self) -> "PubMedReference":
         return PubMedReference(
             pubmed_id=self.pubmed_id,
             snippet=self.snippet,
         )
+
 
 class RankedPubMedReference(PubMedReference):
     model_config = ConfigDict(frozen=True)
@@ -155,10 +165,11 @@ class PartialAnswer(Question):
             if self.summary is not None
             else set()
         )
-        references = {
-            reference.as_unranked()
-            for reference in self.references # type: ignore
-        } if self.references is not None else set()
+        references = (
+            {reference.as_unranked() for reference in self.references}  # type: ignore
+            if self.references is not None
+            else set()
+        )
         if not text_references.issubset(references):
             raise ValueError(
                 f"In-text references must be a subset of explicit references. Found {len(text_references - references)} missing references: {text_references - references}"
@@ -263,6 +274,15 @@ class Answer(RetrievalAnswer, GenerationAnswer, PartialAnswer, Question):
             },
         )
 
+    def as_question(self) -> Question:
+        return Question(
+            id=self.id,
+            text=self.text,
+            type=self.type,
+            query=self.query,
+            narrative=self.narrative,
+        )
+
 
 # CLEF BioASQ model definitions.
 
@@ -325,14 +345,6 @@ class ClefBioAsqSnippet(BaseModel):
         int,
         Ge(0),
         PlainValidator(_clamp_positive),
-        WithJsonSchema(
-            TypeAdapter(int).json_schema(),
-            mode="validation",
-        ),
-        WithJsonSchema(
-            TypeAdapter(Annotated[int, Ge(0)]).json_schema(),  # type: ignore
-            mode="serialization",
-        ),
     ]
     endSection: str
     offsetInEndSection: Annotated[
