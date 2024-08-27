@@ -138,6 +138,7 @@ def index_pubmed_full_texts(
         get_full_text_batch,
         batch_size=10,
         num_cpus=0.25,
+        concurrency=6,
     )
     if dry_run:
         data = data.filter(lambda x: x["doc"]["full_text"] is not None)
