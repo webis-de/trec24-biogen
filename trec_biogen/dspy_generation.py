@@ -263,7 +263,11 @@ class _ExactPredict(Module):
                 **kwargs,
             )
             output_answer = prediction["answer"]
-            output_answer = output_answer.split("\n")[0].strip().removesuffix(".").lower()
+            # Consider only first line.
+            output_answer = output_answer.split("\n")[0]
+            output_answer = output_answer.strip()
+            # Ignore period at the end and lower-case.
+            output_answer = output_answer.removesuffix(".").lower()
             if output_answer == "yes":
                 exact = "yes"
             elif output_answer == "no":
@@ -282,6 +286,8 @@ class _ExactPredict(Module):
                 **kwargs,
             )
             output_answer = prediction["answer"]
+            # Consider only first line.
+            output_answer = output_answer.split("\n")[0]
             output_answer = output_answer.strip()
             if len(output_answer) == 0:
                 warn(
