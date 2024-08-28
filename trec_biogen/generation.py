@@ -1,31 +1,43 @@
-from abc import ABCMeta
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Iterable, Sequence
 
-from dspy import Module, ProgramMeta
+from dsp import LM
+from tqdm.auto import tqdm
 
+from trec_biogen.dspy_generation import GenerationAnswerPredict
 from trec_biogen.model import GenerationAnswer, PartialAnswer
 from trec_biogen.modules import GenerationModule, RetrievalModule
 
 
-class _ABCProgramMeta(ABCMeta, ProgramMeta):
-    """
-    Combine the metaclasses of ABC and DSPy.
-    This is necessary, because otherwise, the metaclasses
-    of DSPy's `Module` and `ABC` conflict.
-    """
-
-
 @dataclass(frozen=True)
-class DspyGenerationModule(GenerationModule, Module, metaclass=_ABCProgramMeta):
+class DspyGenerationModule(GenerationModule):
     """
     Generate an answer using the DSPy LLM programming framework.
     """
 
-    todo: Any  # TODO: Define hyper-parameters.
+    predict: GenerationAnswerPredict
+    language_model: LM
+    progress: bool = False
 
     def generate(self, context: PartialAnswer) -> GenerationAnswer:
-        return NotImplemented
+        prediction = self.predict.forward(
+            context=context,
+            lm=self.language_model,
+        )
+        answer: GenerationAnswer = prediction.answer
+        return answer
+
+    def generate_many(
+        self, contexts: Sequence[PartialAnswer]
+    ) -> Sequence[GenerationAnswer]:
+        contexts_iterable: Iterable[PartialAnswer] = contexts
+        if self.progress:
+            contexts_iterable = tqdm(
+                contexts_iterable,
+                desc="Generate answers with DSPy",
+                unit="question",
+            )
+        return [self.generate(context) for context in contexts]
 
 
 @dataclass(frozen=True)
