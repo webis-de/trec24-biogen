@@ -1,10 +1,17 @@
-from typing import Iterable, Literal, Sequence
+from typing import Literal, Sequence
+from warnings import catch_warnings, simplefilter
 
-from dspy.teleprompt import LabeledFewShot
+from dspy import settings as dspy_settings
+
+# from dspy.teleprompt import LabeledFewShot
 from optuna import Study, Trial, create_study
+from optuna.study import StudyDirection
+from optuna.exceptions import ExperimentalWarning
 from optuna.trial import FrozenTrial
+from pyterrier.transformer import Transformer
 
 from trec_biogen.answering import IndependentAnsweringModule, RecurrentAnsweringModule
+from trec_biogen.dspy_generation import GenerationAnswerPredict, PredictType
 from trec_biogen.evaluation import (
     GenerationMeasure,
     RetrievalMeasure,
@@ -12,12 +19,36 @@ from trec_biogen.evaluation import (
     evaluate_retrieval,
 )
 from trec_biogen.generation import DspyGenerationModule, RetrievalThenGenerationModule
+from trec_biogen.language_models import LanguageModelName, get_language_model
 from trec_biogen.model import Answer
 from trec_biogen.modules import AnsweringModule, GenerationModule, RetrievalModule
+from trec_biogen.pyterrier_pubmed import (
+    PubMedElasticsearchRetrieve,
+    PubMedSentencePassager,
+)
+from trec_biogen.pyterrier_query import (
+    ContextElasticsearchQueryTransformer,
+    ContextQueryTransformer,
+)
 from trec_biogen.retrieval import (
     GenerationThenRetrievalModule,
     PyterrierRetrievalModule,
 )
+
+
+def _suggest_must_should(trial: Trial, name: str) -> Literal["must", "should"] | None:
+    must_should = trial.suggest_categorical(
+        name=name,
+        choices=["must", "should", None],
+    )
+    if must_should == "must":
+        return "must"
+    elif must_should == "should":
+        return "should"
+    elif must_should is None:
+        return None
+    else:
+        raise ValueError(f"Illegal value: {must_should}")
 
 
 def build_retrieval_module(
@@ -26,25 +57,145 @@ def build_retrieval_module(
     """
     Build a simple retrieval module based on hyperparameters drawn from the trial.
     """
+    pipeline: Transformer = Transformer.identity()
 
-    # TODO: Define all hyperparameters needed for the retrieval module.
-    todo = trial.suggest_float(
-        name="todo",
-        low=-10,
-        high=10,
+    # Extract/expand the query string from the context.
+    context_query = ContextQueryTransformer(
+        include_question=trial.suggest_categorical(
+            name="context_query_include_question",
+            choices=[
+                # False,
+                True,
+            ],
+        ),
+        include_query=trial.suggest_categorical(
+            name="context_query_include_query",
+            choices=[
+                False,
+                # True,
+            ],
+        ),
+        include_narrative=trial.suggest_categorical(
+            name="context_query_include_narrative",
+            choices=[
+                False,
+                # True,
+            ],
+        ),
+        include_summary=trial.suggest_categorical(
+            name="context_query_include_summary",
+            choices=[
+                False,
+                True,
+            ],
+        ),
+        include_exact=trial.suggest_categorical(
+            name="context_query_include_exact",
+            choices=[
+                False,
+                True,
+            ],
+        ),
+        progress=True,
     )
-    retrieval_module = PyterrierRetrievalModule(
-        todo=todo,
-    )
+    pipeline = pipeline >> context_query
 
-    # Optimization:
-    optimize_retrieval = trial.suggest_categorical(
-        name="optimize_retrieval",
-        choices=[False, True],
+    # Extract the structured Elasticsearch query from the context.
+    context_elasticsearch_query = ContextElasticsearchQueryTransformer(
+        require_title=trial.suggest_categorical(
+            name="context_elasticsearch_query_require_title",
+            choices=[
+                # False,
+                True,
+            ],
+        ),
+        require_abstract=trial.suggest_categorical(
+            name="context_elasticsearch_query_require_abstract",
+            choices=[
+                # False,
+                True,
+            ],
+        ),
+        filter_publication_types=trial.suggest_categorical(
+            name="context_elasticsearch_query_filter_publication_types",
+            choices=[
+                # False,
+                True,
+            ],
+        ),
+        remove_stopwords=trial.suggest_categorical(
+            name="context_elasticsearch_query_remove_stopwords",
+            choices=[
+                False,
+                True,
+            ],
+        ),
+        match_title=_suggest_must_should(
+            trial=trial,
+            name="context_elasticsearch_query_match_title",
+        ),
+        match_abstract=_suggest_must_should(
+            trial=trial,
+            name="context_elasticsearch_query_match_abstract",
+        ),
+        match_mesh_terms=_suggest_must_should(
+            trial=trial,
+            name="context_elasticsearch_query_match_mesh_terms",
+        ),
+        progress=True,
     )
-    if optimize_retrieval:
-        # TODO (later): Optimize the PyTerrier pipeline with `pipeline.fit()`.
-        pass
+    pipeline = pipeline >> context_elasticsearch_query
+
+    # Retrieve PubMed articles from Elasticsearch.
+    pubmed_elasticsearch_retrieve = PubMedElasticsearchRetrieve(
+        include_title_text=trial.suggest_categorical(
+            name="pubmed_elasticsearch_retrieve_include_title_text",
+            choices=[False, True],
+        ),
+        include_abstract_text=trial.suggest_categorical(
+            name="pubmed_elasticsearch_retrieve_include_abstract_text",
+            choices=[False, True],
+        ),
+    )
+    pipeline = pipeline >> pubmed_elasticsearch_retrieve
+
+    # Passage the documents into snippets.
+    passaging_enabled = trial.suggest_categorical(
+        name="passaging_enabled",
+        choices=[
+            # False,
+            True,
+        ],
+    )
+    if passaging_enabled:
+        pubmed_sentence_passager = PubMedSentencePassager(
+            include_title_snippets=trial.suggest_categorical(
+                name="pubmed_sentence_passager_include_title_snippets",
+                choices=[
+                    # False,
+                    True,
+                ],
+            ),
+            include_abstract_snippets=trial.suggest_categorical(
+                name="pubmed_sentence_passager_include_abstract_snippets",
+                choices=[
+                    # False,
+                    True,
+                ],
+            ),
+            max_sentences=trial.suggest_int(
+                name="pubmed_sentence_passager_max_sentences",
+                low=1,
+                high=5,
+            ),
+        )
+        pipeline = pipeline >> pubmed_sentence_passager
+
+    # TODO: Re-ranking.
+
+    retrieval_module = PyterrierRetrievalModule(pipeline, progress=True)
+
+    # TODO (later): Optimize the PyTerrier pipeline with `pipeline.fit()` if applicable.
 
     return retrieval_module
 
@@ -56,43 +207,77 @@ def build_generation_module(
     Build a simple generation module based on hyperparameters drawn from the trial.
     """
 
-    # TODO: Define all hyperparameters needed for the generation module.
-    todo = trial.suggest_float(
-        name="todo",
-        low=-10,
-        high=10,
+    summary_predict_type: PredictType = trial.suggest_categorical(
+        name="summary_predict_type",
+        choices=[
+            "predict",
+            "chain-of-thought",
+        ],
+    )  # type: ignore
+    exact_predict_type: PredictType = trial.suggest_categorical(
+        name="exact_predict_type",
+        choices=[
+            "predict",
+            "chain-of-thought",
+        ],
+    )  # type: ignore
+    assertions_max_backtracks: int = trial.suggest_int(
+        name="assertions_max_backtracks",
+        low=0,
+        high=5,
     )
-    generation_module = DspyGenerationModule(
-        todo=todo,
+    predict = GenerationAnswerPredict(
+        summary_predict_type=summary_predict_type,
+        exact_predict_type=exact_predict_type,
+        assertions_max_backtracks=assertions_max_backtracks,
     )
 
-    # Optimization:
-    optimize_generation = trial.suggest_categorical(
-        name="optimize_generation",
-        choices=[False, True],
+    language_model_name: LanguageModelName = trial.suggest_categorical(
+        name="language_model_name",
+        choices=[
+            "blablador:Mistral-7B-Instruct-v0.3",
+            # "blablador:Mixtral-8x7B-Instruct-v0.1",
+            # "blablador:Llama3.1-8B-Instruct",
+        ],
+    )  # type: ignore
+    language_model = get_language_model(language_model_name)
+
+    # Allow us to specify the LM in the `forward()` call.
+    dspy_settings.configure(
+        experimental=True,
     )
-    if optimize_generation:
-        # TODO (later): Add other DSPy optimizers.
-        optimizer_type: Literal["labeled-few-shot"]
-        optimizer_type = "labeled-few-shot"
-        if optimizer_type == "labeled-few-shot":
 
-            # Tune the generation module with DSPy (to select few-shot examples).
-            few_shot_k = trial.suggest_int(
-                name="few_shot_k",
-                low=1,
-                high=10,
-            )
-            optimizer = LabeledFewShot(k=few_shot_k)
-            generation_module = optimizer.compile(
-                student=generation_module,
-                trainset=NotImplemented,
-                sample=True,
-            )
-        else:
-            raise ValueError(f"Unkown optimizer type: {optimizer_type}")
+    # # Optimization:
+    # optimize_generation = trial.suggest_categorical(
+    #     name="optimize_generation",
+    #     choices=[False, True],
+    # )
+    # if optimize_generation:
+    #     # TODO (later): Add other DSPy optimizers.
+    #     optimizer_type: Literal["labeled-few-shot"]
+    #     optimizer_type = "labeled-few-shot"
+    #     if optimizer_type == "labeled-few-shot":
 
-    return generation_module
+    #         # Tune the generation module with DSPy (to select few-shot examples).
+    #         few_shot_k = trial.suggest_int(
+    #             name="few_shot_k",
+    #             low=1,
+    #             high=10,
+    #         )
+    #         optimizer = LabeledFewShot(k=few_shot_k)
+    #         generation_module = optimizer.compile(
+    #             student=generation_module,
+    #             trainset=NotImplemented,
+    #             sample=True,
+    #         )
+    #     else:
+    #         raise ValueError(f"Unkown optimizer type: {optimizer_type}")
+
+    return DspyGenerationModule(
+        predict=predict,
+        language_model=language_model,
+        progress=True,
+    )
 
 
 def build_generation_augmented_retrieval_module(
@@ -244,8 +429,8 @@ def build_answering_module(
         name="answering_module_type",
         choices=[
             "no augmentation",
-            "independent augmentation",
-            "cross augmentation",
+            # "independent augmentation",
+            # "cross augmentation",
         ],
     )
     if augmentation_type == "no augmentation":
@@ -260,13 +445,13 @@ def build_answering_module(
 
 def optimize_answering_module(
     ground_truth: Sequence[Answer],
-    retrieval_measures: Iterable[RetrievalMeasure],
-    generation_measures: Iterable[GenerationMeasure],
+    retrieval_measures: Sequence[RetrievalMeasure],
+    generation_measures: Sequence[GenerationMeasure],
     trials: int | None = None,
     timeout: float | None = None,
     parallelism: int = 1,
     progress: bool = False,
-) -> FrozenTrial:
+) -> Sequence[FrozenTrial]:
     questions = [answer.as_question() for answer in ground_truth]
     contexts = [question.as_partial_answer() for question in questions]
 
@@ -291,7 +476,15 @@ def optimize_answering_module(
         )
         return (*retrieval_metrics, *generation_metrics)
 
-    study: Study = create_study()
+    study: Study = create_study(
+        directions=[StudyDirection.MAXIMIZE]
+        * (len(retrieval_measures) + len(generation_measures))
+    )
+    with catch_warnings():
+        simplefilter(action="ignore", category=ExperimentalWarning)
+        study.set_metric_names(
+            [*(str(measure) for measure in retrieval_measures), *generation_measures]
+        )
     study.optimize(
         func=objective,
         n_trials=trials,
@@ -299,19 +492,4 @@ def optimize_answering_module(
         n_jobs=parallelism,
         show_progress_bar=progress,
     )
-    return study.best_trial
-
-
-# if __name__ == "main":
-#     trial = optimize_retrieval_and_generation_module(
-#         retrieval_dataset_name="bioasq-task-b",
-#         retrieval_measures=[
-#             Precision@1,  # type: ignore
-#             nDCG,
-#         ],
-#         generation_dataset_name="bioasq-task-b",
-#         generation_measures=[
-#             "todo"  # TODO: Use the implemented measures.
-#         ],
-#     )
-#     print(trial)
+    return study.best_trials
