@@ -1,4 +1,4 @@
-from typing import Annotated, Iterable
+from typing import Annotated, Iterable, Sequence
 
 from annotated_types import Ge, Gt, Interval
 from cyclopts import App, Parameter
@@ -128,14 +128,17 @@ def optimize(
         float, Interval(ge=0, le=1), Parameter(validator=Number(gte=0, lte=1))
     ] = 1,
     retrieval_measures: Annotated[
-        Iterable[RetrievalMeasure], Parameter(converter=_retrieval_measures)
+        list[RetrievalMeasure], Parameter(converter=_retrieval_measures)
     ] = [],
-    generation_measures: Iterable[GenerationMeasure] = [],
+    generation_measures: list[GenerationMeasure] = [],
     trials: Annotated[int, Ge(1), Parameter(validator=Number(gte=1))] | None = None,
     timeout: Annotated[float, Gt(0), Parameter(validator=Number(gt=0))] | None = None,
     parallelism: Annotated[int, Ge(1), Parameter(validator=Number(gte=1))] = 1,
     progress: bool = False,
 ) -> None:
+    if find_dotenv():
+        load_dotenv()
+        
     from trec_biogen.datasets import load_answers
     from trec_biogen.optimization import optimize_answering_module
 
@@ -146,7 +149,7 @@ def optimize(
     )
     print(f"Found {len(answers)} answers.")
 
-    optimize_answering_module(
+    best_trials = optimize_answering_module(
         ground_truth=answers,
         retrieval_measures=retrieval_measures,
         generation_measures=generation_measures,
@@ -155,3 +158,5 @@ def optimize(
         parallelism=parallelism,
         progress=progress,
     )
+    for trial in best_trials:
+        print(trial.values, trial.params)
