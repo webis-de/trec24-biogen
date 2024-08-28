@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Hashable, Iterable, Sequence
+from typing import Iterable, Sequence
 
-from pandas import DataFrame, Series
+from pandas import DataFrame
 from pyterrier.transformer import Transformer
 from tqdm.auto import tqdm
 
