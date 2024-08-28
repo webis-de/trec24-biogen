@@ -1,5 +1,6 @@
 from math import inf, isnan
 from typing import Literal, Sequence, TypeAlias
+from warnings import catch_warnings, filterwarnings
 
 from ir_measures import Measure, Qrel, ScoredDoc
 from numpy import array
@@ -91,22 +92,33 @@ def evaluate_generation(
             for answer_prediction, answer_ground_truth in zip(predictions, ground_truth)
             if answer_ground_truth.type == "yes-no"
         ]
-        accuracy = float(
-            accuracy_score(
-                y_true=array(
-                    [
-                        yes_no_ground_truth
-                        for _, yes_no_ground_truth in yes_no_predictions_ground_truth
-                    ]
-                ),
-                y_pred=array(
-                    [
-                        yes_no_prediction
-                        for yes_no_prediction, _ in yes_no_predictions_ground_truth
-                    ]
-                ),
+        with catch_warnings():
+            filterwarnings(
+                action="ignore",
+                category=RuntimeWarning,
+                message=r".*Mean of empty slice.*",
             )
-        )
+            filterwarnings(
+                action="ignore",
+                category=RuntimeWarning,
+                message=r".*invalid value encountered in scalar divide.*",
+            )
+            accuracy = float(
+                accuracy_score(
+                    y_true=array(
+                        [
+                            yes_no_ground_truth
+                            for _, yes_no_ground_truth in yes_no_predictions_ground_truth
+                        ]
+                    ),
+                    y_pred=array(
+                        [
+                            yes_no_prediction
+                            for yes_no_prediction, _ in yes_no_predictions_ground_truth
+                        ]
+                    ),
+                )
+            )
         return accuracy if not isnan(accuracy) else 0
     else:
         raise ValueError(f"Invalid generation measure: {measure}")
