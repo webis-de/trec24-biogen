@@ -3,15 +3,13 @@ from math import inf
 from pathlib import Path
 from re import compile as re_compile
 from spacy import load as spacy_load
-from typing import Annotated, Literal, Self, Sequence, TypeAlias
+from typing import Annotated, Any, Literal, Self, Sequence, TypeAlias
 
 from annotated_types import Ge
 from pydantic import (
     BaseModel,
     AfterValidator,
     PlainValidator,
-    WithJsonSchema,
-    TypeAdapter,
     Field,
     model_validator,
     ConfigDict,
@@ -112,6 +110,27 @@ class PubMedReference(BaseModel):
             pubmed_id=self.pubmed_id,
             snippet=self.snippet,
         )
+    
+    def __contains__(self, other: Any) -> bool:
+        if not isinstance(other, PubMedReference):
+            return False
+        elif self.pubmed_id != other.pubmed_id:
+            return False
+        elif self.snippet is None:
+            return True
+        elif other.snippet is None:
+            return False
+        elif self.snippet.start_section != other.snippet.start_section:
+            return False
+        elif self.snippet.end_section != other.snippet.end_section:
+            return False
+        elif self.snippet.start_offset > other.snippet.start_offset:
+            return False
+        elif self.snippet.end_offset < other.snippet.end_offset:
+            return False
+        else:
+            return True
+            
 
 
 class RankedPubMedReference(PubMedReference):
@@ -525,6 +544,7 @@ class TrecBioGenQuestion(BaseModel):
             narrative=self.narrative,
         )
 
+_PATTERN_REFERENCE = re_compile(r".*\[(\d+(?:,\s*\d+)*)\]\s*[.!?]?")
 
 TrecBioGenAnswerString: TypeAlias = str  # TODO: Add validator.
 
