@@ -58,16 +58,22 @@ class ElasticsearchRetrieve(Generic[T], Transformer):
 
         search: Search = self.document_type.search(
             using=self.client, index=self.index)
-        search = search.query(self.query_builder(row.to_dict()))
+        
+        query = self.query_builder(row.to_dict())
+        search = search.query(query)
         search = search.extra(size=self.num_results)
 
         response = search.execute()
         hits: Iterable[Hit] = response.hits.hits  # type: ignore
         hits = islice(hits, self.num_results)
-        return DataFrame([
+        res = DataFrame([
             self._merge_result(row.to_dict(), hit)
             for hit in hits
         ])
+        if len(res) == 0:
+            # Fix columns when no results could be retrieved.
+            res = DataFrame(columns=["qid", "docno", "score"])
+        return res
 
     def transform(self, topics_or_res: DataFrame) -> DataFrame:
         if not isinstance(topics_or_res, DataFrame):
