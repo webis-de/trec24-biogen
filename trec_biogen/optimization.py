@@ -19,7 +19,7 @@ from trec_biogen.evaluation import (
     evaluate_retrieval,
 )
 from trec_biogen.generation import DspyGenerationModule, RetrievalThenGenerationModule
-from trec_biogen.language_models import LanguageModelName, get_language_model
+from trec_biogen.language_models import LanguageModelName, get_dspy_language_model
 from trec_biogen.model import Answer
 from trec_biogen.modules import AnsweringModule, GenerationModule, RetrievalModule
 from trec_biogen.pyterrier_pubmed import (
@@ -200,6 +200,18 @@ def build_retrieval_module(
     return retrieval_module
 
 
+def _suggest_language_model_name(trial: Trial, name: str) -> LanguageModelName:
+    language_model_name: LanguageModelName = trial.suggest_categorical(
+        name="language_model_name",
+        choices=[
+            "blablador:Mistral-7B-Instruct-v0.3",
+            # "blablador:Mixtral-8x7B-Instruct-v0.1",
+            # "blablador:Llama3.1-8B-Instruct",
+        ],
+    )  # type: ignore
+    return language_model_name
+
+
 def build_generation_module(
     trial: Trial,
 ) -> GenerationModule:
@@ -232,15 +244,11 @@ def build_generation_module(
         assertions_max_backtracks=assertions_max_backtracks,
     )
 
-    language_model_name: LanguageModelName = trial.suggest_categorical(
+    language_model_name: LanguageModelName = _suggest_language_model_name(
+        trial=trial,
         name="language_model_name",
-        choices=[
-            "blablador:Mistral-7B-Instruct-v0.3",
-            # "blablador:Mixtral-8x7B-Instruct-v0.1",
-            # "blablador:Llama3.1-8B-Instruct",
-        ],
-    )  # type: ignore
-    language_model = get_language_model(language_model_name)
+    )
+    language_model = get_dspy_language_model(language_model_name)
 
     # Allow us to specify the LM in the `forward()` call.
     dspy_settings.configure(
@@ -471,6 +479,10 @@ def optimize_answering_module(
                 ground_truth=ground_truth,
                 predictions=predictions,
                 measure=measure,
+                language_model_name=_suggest_language_model_name(
+                    trial=trial,
+                    name="language_model_name",
+                ),
             )
             for measure in generation_measures
         )
