@@ -208,8 +208,8 @@ def evaluate_generation(
             metrics=[ragas_measure],
             llm=language_model,
             run_config=RunConfig(
-                timeout=60,
-                max_retries=5,
+                timeout=120,
+                max_retries=3,
             )
         )
         result_df: DataFrame = result.to_pandas()  # type: ignore
