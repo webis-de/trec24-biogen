@@ -150,7 +150,7 @@ def optimize(
     print(f"Found {len(answers)} answers.")
 
     best_trials = optimize_answering_module(
-        ground_truth=answers,
+        answers=answers,
         retrieval_measures=retrieval_measures,
         generation_measures=generation_measures,
         trials=trials,
