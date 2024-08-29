@@ -191,7 +191,7 @@ class PartialAnswer(Question):
         )
         if not text_references.issubset(references):
             raise ValueError(
-                f"In-text references must be a subset of explicit references. Found {len(text_references - references)} missing references: {text_references - references}"
+                f"In-text references must be a subset of explicit references. Found {len(text_references - references)} missing references (out of {len(text_references)} references in the text, {len(references)} overall): {text_references - references}"
             )
         return self
 
