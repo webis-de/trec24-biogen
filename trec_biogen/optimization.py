@@ -1,11 +1,12 @@
-from typing import Literal, Sequence
+from typing import Callable, Literal, Sequence
 from warnings import catch_warnings, simplefilter
 
 from dspy import settings as dspy_settings
 from optuna import Study, Trial, create_study
-from optuna.study import StudyDirection, MaxTrialsCallback
+from optuna.study import StudyDirection
 from optuna.exceptions import ExperimentalWarning
-from optuna.trial import FrozenTrial, TrialState
+from optuna.trial import FrozenTrial
+from optuna_integration import WeightsAndBiasesCallback
 from pyterrier.transformer import Transformer
 
 from trec_biogen.answering import IndependentAnsweringModule, RecurrentAnsweringModule
@@ -195,6 +196,12 @@ def build_retrieval_module(
         pipeline = pipeline >> pubmed_sentence_passager
 
     # TODO: Re-ranking.
+
+            # max_sentences=trial.suggest_int(
+            #     name="pubmed_sentence_passager_max_sentences",
+            #     low=1,
+            #     high=5,
+            # ),
 
     retrieval_module = PyterrierRetrievalModule(pipeline, progress=True)
 
@@ -423,9 +430,9 @@ def build_answering_module(
     augmentation_type = trial.suggest_categorical(
         name="answering_module_type",
         choices=[
-            "no augmentation",
+            # "no augmentation",
             "independent augmentation",
-            "cross augmentation",
+            # "cross augmentation",
         ],
     )
     if augmentation_type == "no augmentation":
@@ -446,6 +453,7 @@ def optimize_answering_module(
     timeout: float | None = None,
     parallelism: int = 1,
     progress: bool = False,
+    wandb: bool=False,
 ) -> Sequence[FrozenTrial]:
     questions = [answer.as_question() for answer in answers]
     contexts = [question.as_partial_answer() for question in questions]
@@ -479,26 +487,28 @@ def optimize_answering_module(
         directions=[StudyDirection.MAXIMIZE]
         * (len(retrieval_measures) + len(generation_measures))
     )
+    metric_names = [
+        *(str(measure) for measure in retrieval_measures), 
+        *generation_measures,
+    ]
     with catch_warnings():
         simplefilter(action="ignore", category=ExperimentalWarning)
-        study.set_metric_names(
-            [*(str(measure) for measure in retrieval_measures), *generation_measures]
-        )
+        study.set_metric_names(metric_names)
+    callbacks: list[Callable[[Study, FrozenTrial], None]] = []
+    if wandb:
+        callbacks.append(WeightsAndBiasesCallback(
+            metric_name=metric_names,
+            wandb_kwargs=dict(
+                project="trec-biogen",
+            ),
+        ))
     study.optimize(
         func=objective,
-        n_trials=None,
+        n_trials=trials,
         timeout=timeout,
         n_jobs=parallelism,
         show_progress_bar=progress,
-        callbacks=(
-            [
-                MaxTrialsCallback(
-                    n_trials=trials,
-                    states=(TrialState.COMPLETE,),
-                )
-            ]
-            if trials is not None
-            else []
-        ),
+        callbacks=callbacks,
+        catch=[],
     )
     return study.best_trials
