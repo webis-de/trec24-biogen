@@ -25,6 +25,8 @@ pip:
   - pydantic[email]~=2.5
   - pypdf~=4.2
   - python-dotenv~=1.0
+  - pyterrier-dr @ git+https://github.com/terrierteam/pyterrier_dr.git@123a5d0e76824b275bad910f76547b811baebebb
+  - pyterrier-t5 @ git+https://github.com/terrierteam/pyterrier_t5.git@679e3320b0f7c997de108bc44f66ef15fba72f08
   - python-terrier~=0.11.0
   - ragas~=0.1.15
   - ray-elasticsearch~=0.2.2
