@@ -67,7 +67,7 @@ def build_retrieval_module(
         include_question=trial.suggest_categorical(
             name="context_query_include_question",
             choices=[
-                # False,
+                False,
                 True,
             ],
         ),
@@ -75,14 +75,14 @@ def build_retrieval_module(
             name="context_query_include_query",
             choices=[
                 False,
-                # True,
+                True,
             ],
         ),
         include_narrative=trial.suggest_categorical(
             name="context_query_include_narrative",
             choices=[
                 False,
-                # True,
+                True,
             ],
         ),
         include_summary=trial.suggest_categorical(
@@ -108,21 +108,21 @@ def build_retrieval_module(
         require_title=trial.suggest_categorical(
             name="context_elasticsearch_query_require_title",
             choices=[
-                # False,
+                False,
                 True,
             ],
         ),
         require_abstract=trial.suggest_categorical(
             name="context_elasticsearch_query_require_abstract",
             choices=[
-                # False,
+                False,
                 True,
             ],
         ),
         filter_publication_types=trial.suggest_categorical(
             name="context_elasticsearch_query_filter_publication_types",
             choices=[
-                # False,
+                False,
                 True,
             ],
         ),
@@ -166,7 +166,7 @@ def build_retrieval_module(
     passaging_enabled = trial.suggest_categorical(
         name="passaging_enabled",
         choices=[
-            # False,
+            False,
             True,
         ],
     )
@@ -175,14 +175,14 @@ def build_retrieval_module(
             include_title_snippets=trial.suggest_categorical(
                 name="pubmed_sentence_passager_include_title_snippets",
                 choices=[
-                    # False,
+                    False,
                     True,
                 ],
             ),
             include_abstract_snippets=trial.suggest_categorical(
                 name="pubmed_sentence_passager_include_abstract_snippets",
                 choices=[
-                    # False,
+                    False,
                     True,
                 ],
             ),
@@ -423,10 +423,9 @@ def build_answering_module(
     augmentation_type = trial.suggest_categorical(
         name="answering_module_type",
         choices=[
-            # TODO
             "no augmentation",
-            # "independent augmentation",
-            # "cross augmentation",
+            "independent augmentation",
+            "cross augmentation",
         ],
     )
     if augmentation_type == "no augmentation":
