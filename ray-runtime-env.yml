@@ -12,11 +12,22 @@ pip:
   - aiohttp~=3.9
   - certifi~=2024.7
   - cyclopts~=2.9
+  - dspy-ai~=2.4.13
   - elasticsearch7~=7.17
   - elasticsearch7-dsl~=7.3
-  - pypdf~=4.2
+  - en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+  - en_core_sci_sm @ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
+  - more-itertools~=10.3
+  - optuna~=3.6
+  - pandas~=2.0
+  - pyarrow~=17.0
   - pydantic[email]~=2.5
+  - pypdf~=4.2
   - python-dotenv~=1.0
+  - python-terrier~=0.11.0
+  - ragas~=0.1.15
   - ray-elasticsearch~=0.2.2
+  - scikit-learn~=1.5
+  - spacy~=3.7
   - tqdm~=4.64
 logging_level: debug
