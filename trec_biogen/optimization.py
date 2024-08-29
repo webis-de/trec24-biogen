@@ -3,6 +3,7 @@ from warnings import catch_warnings, simplefilter
 
 from dspy import settings as dspy_settings
 from optuna import Study, Trial, create_study
+from optuna.exceptions import TrialPruned
 from optuna.study import StudyDirection
 from optuna.exceptions import ExperimentalWarning
 from optuna.trial import FrozenTrial
@@ -62,49 +63,66 @@ def build_retrieval_module(
     Build a simple retrieval module based on hyperparameters drawn from the trial.
     """
     pipeline: Transformer = Transformer.identity()
+    include_question=trial.suggest_categorical(
+        name="context_query_include_question",
+        choices=[
+            False,
+            True,
+        ],
+    )
+    include_query=trial.suggest_categorical(
+        name="context_query_include_query",
+        choices=[
+            False,
+            True,
+        ],
+    )
+    if not any((include_question, include_query)):
+        raise TrialPruned("Must include at least question or query (or both).")
+    include_narrative=trial.suggest_categorical(
+        name="context_query_include_narrative",
+        choices=[
+            False,
+            True,
+        ],
+    )
+    include_summary=trial.suggest_categorical(
+        name="context_query_include_summary",
+        choices=[
+            False,
+            True,
+        ],
+    )
+    include_exact=trial.suggest_categorical(
+        name="context_query_include_exact",
+        choices=[
+            False,
+            True,
+        ],
+    )
 
     # Extract/expand the query string from the context.
     context_query = ContextQueryTransformer(
-        include_question=trial.suggest_categorical(
-            name="context_query_include_question",
-            choices=[
-                False,
-                True,
-            ],
-        ),
-        include_query=trial.suggest_categorical(
-            name="context_query_include_query",
-            choices=[
-                False,
-                True,
-            ],
-        ),
-        include_narrative=trial.suggest_categorical(
-            name="context_query_include_narrative",
-            choices=[
-                False,
-                True,
-            ],
-        ),
-        include_summary=trial.suggest_categorical(
-            name="context_query_include_summary",
-            choices=[
-                False,
-                True,
-            ],
-        ),
-        include_exact=trial.suggest_categorical(
-            name="context_query_include_exact",
-            choices=[
-                False,
-                True,
-            ],
-        ),
+        include_question=include_question,
+        include_query=include_query,
+        include_narrative=include_narrative,
+        include_summary=include_summary,
+        include_exact=include_exact,
         progress=True,
     )
     pipeline = pipeline >> context_query
 
     # Extract the structured Elasticsearch query from the context.
+    match_title=_suggest_must_should(
+        trial=trial,
+        name="context_elasticsearch_query_match_title",
+    )
+    match_abstract=_suggest_must_should(
+        trial=trial,
+        name="context_elasticsearch_query_match_abstract",
+    )
+    if not any((match_title == "must", match_abstract == "must")):
+        raise TrialPruned("Must match at least on title or abstract (or both).")
     context_elasticsearch_query = ContextElasticsearchQueryTransformer(
         require_title=trial.suggest_categorical(
             name="context_elasticsearch_query_require_title",
@@ -134,14 +152,8 @@ def build_retrieval_module(
                 True,
             ],
         ),
-        match_title=_suggest_must_should(
-            trial=trial,
-            name="context_elasticsearch_query_match_title",
-        ),
-        match_abstract=_suggest_must_should(
-            trial=trial,
-            name="context_elasticsearch_query_match_abstract",
-        ),
+        match_title=match_title,
+        match_abstract=match_abstract,
         match_mesh_terms=_suggest_must_should(
             trial=trial,
             name="context_elasticsearch_query_match_mesh_terms",
