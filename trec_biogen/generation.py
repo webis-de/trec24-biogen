@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
-from dsp import LM
+from dspy import LM, settings as dspy_settings
 from tqdm.auto import tqdm
 
 from trec_biogen.dspy_generation import GenerationAnswerPredict
@@ -20,10 +20,12 @@ class DspyGenerationModule(GenerationModule):
     progress: bool = False
 
     def generate(self, context: PartialAnswer) -> GenerationAnswer:
-        prediction = self.predict.forward(
-            context=context,
-            lm=self.language_model,
-        )
+        with dspy_settings.context(
+            lm=self.language_model, 
+        ):
+            prediction = self.predict.forward(
+                context=context,
+            )
         answer: GenerationAnswer = prediction.answer
         return answer
 
