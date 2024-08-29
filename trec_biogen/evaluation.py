@@ -19,6 +19,7 @@ from ragas.metrics import (
     summarization_score,
 )
 from ragas.metrics.base import Metric as RagasMeasure
+from ragas.run_config import RunConfig
 from sklearn.metrics import accuracy_score
 
 from trec_biogen.language_models import LanguageModelName, get_langchain_language_model
@@ -206,6 +207,10 @@ def evaluate_generation(
             dataset=dataset,
             metrics=[ragas_measure],
             llm=language_model,
+            run_config=RunConfig(
+                timeout=60,
+                max_retries=5,
+            )
         )
         result_df: DataFrame = result.to_pandas()  # type: ignore
         return float(result_df[ragas_measure.name].mean())
