@@ -21,7 +21,7 @@ class DspyGenerationModule(GenerationModule):
 
     def generate(self, context: PartialAnswer) -> GenerationAnswer:
         with dspy_settings.context(
-            lm=self.language_model, 
+            lm=self.language_model,
         ):
             prediction = self.predict.forward(
                 context=context,

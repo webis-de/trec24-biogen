@@ -110,7 +110,7 @@ class PubMedReference(BaseModel):
             pubmed_id=self.pubmed_id,
             snippet=self.snippet,
         )
-    
+
     def __contains__(self, other: Any) -> bool:
         if not isinstance(other, PubMedReference):
             return False
@@ -130,7 +130,6 @@ class PubMedReference(BaseModel):
             return False
         else:
             return True
-            
 
 
 class RankedPubMedReference(PubMedReference):
@@ -175,23 +174,23 @@ class PartialAnswer(Question):
 
     @model_validator(mode="after")
     def check_references_match(self) -> Self:
-        text_references = (
-            {
-                reference.as_unranked()
-                for sentence in self.summary
-                for reference in sentence.references  # type: ignore
-            }
-            if self.summary is not None
-            else set()
+        summary: PubMedReferencesSummary = (
+            self.summary if self.summary is not None else []
         )
-        references = (
-            {reference.as_unranked() for reference in self.references}  # type: ignore
-            if self.references is not None
-            else set()
+        references: Sequence[RankedPubMedReference] = (
+            self.references if self.references is not None else []
         )
-        if not text_references.issubset(references):
+        sentence_references = (
+            reference for sentence in summary for reference in sentence.references
+        )
+        dangling_references = [
+            sentence_reference
+            for sentence_reference in sentence_references
+            if not any(sentence_reference in reference for reference in references)
+        ]
+        if len(dangling_references) > 0:
             raise ValueError(
-                f"In-text references must be a subset of explicit references. Found {len(text_references - references)} missing references (out of {len(text_references)} references in the text, {len(references)} overall): {text_references - references}"
+                f"Found {len(dangling_references)} dangling in-text references that are not covered by references in the references list: {dangling_references}"
             )
         return self
 
@@ -543,6 +542,7 @@ class TrecBioGenQuestion(BaseModel):
             query=self.topic,
             narrative=self.narrative,
         )
+
 
 _PATTERN_REFERENCE = re_compile(r".*\[(\d+(?:,\s*\d+)*)\]\s*[.!?]?")
 

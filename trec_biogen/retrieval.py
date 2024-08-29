@@ -10,24 +10,8 @@ from trec_biogen.model import (
     RankedPubMedReference,
     RetrievalAnswer,
     Snippet,
-    PubMedReferenceSentence,
 )
 from trec_biogen.modules import GenerationModule, RetrievalModule
-
-
-def _remove_dangling_references(
-    sentence: PubMedReferenceSentence,
-    references: Sequence[RankedPubMedReference],
-) -> PubMedReferenceSentence:
-    sentence_references = [
-        sentence_reference
-        for sentence_reference in sentence.references
-        if any(sentence_reference in reference for reference in references)
-    ]
-    return PubMedReferenceSentence(
-        sentence=sentence.sentence,
-        references=sentence_references,
-    )
 
 
 @dataclass(frozen=True)
@@ -78,21 +62,13 @@ class PyterrierRetrievalModule(RetrievalModule, Transformer):
                 for _, row in res.iterrows()
             ]
 
-        # Remove dangling references from the summary.
-        summary = context.summary
-        if summary is not None:
-            summary = [
-                _remove_dangling_references(sentence, references)
-                for sentence in summary
-            ]
-
         return RetrievalAnswer(
             id=context.id,
             text=context.text,
             type=context.type,
             query=context.query,
             narrative=context.narrative,
-            summary=summary,
+            summary=context.summary,
             exact=context.exact,
             references=references,
         )
