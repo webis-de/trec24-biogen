@@ -215,7 +215,11 @@ def _as_dspy_examples(
     answers: Sequence[Answer],
 ) -> Sequence[Example]:
     return [
-        # TODO
+        Example(
+            context=answer.as_question().as_partial_answer(),
+            answer=answer,
+        ).with_inputs()
+        for answer in answers
     ]
 
 def build_generation_module(
