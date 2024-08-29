@@ -27,6 +27,7 @@ pip:
   - python-terrier~=0.11.0
   - ragas~=0.1.15
   - ray-elasticsearch~=0.2.2
+  - rouge-score~=0.1.2
   - scikit-learn~=1.5
   - spacy~=3.7
   - tqdm~=4.64
