@@ -139,7 +139,7 @@ def _as_ragas_dataset(
                     if answer_ground_truth.references is not None
                     else []
                 ),
-                "groun_truth": " ".join(
+                "ground_truth": " ".join(
                     sentence.sentence for sentence in answer_ground_truth.summary
                 ),
             }
