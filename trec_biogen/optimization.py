@@ -304,7 +304,7 @@ def build_generation_augmented_retrieval_module(
     num_augmentations = trial.suggest_int(
         name="generation_augmented_retrieval_num_augmentations",
         low=1,
-        high=5,
+        high=3,
     )
     # Should we also augment the generation module after augmenting the retrieval module or keep the generation module fixed?
     back_augment = trial.suggest_categorical(
@@ -341,7 +341,7 @@ def build_retrieval_augmented_generation_module(
     num_augmentations = trial.suggest_int(
         name="retrieval_augmented_generation_num_augmentations",
         low=1,
-        high=5,
+        high=3,
     )
     # Should we also augment the retrieval module after augmenting the generation module or keep the retrieval module fixed?
     back_augment = trial.suggest_categorical(
@@ -422,7 +422,7 @@ def build_answering_module_cross_augmentation(
     steps = trial.suggest_int(
         name="answering_module_cross_augmentation_steps",
         low=1,
-        high=5,
+        high=3,
     )
     return RecurrentAnsweringModule(
         answering_module=answering_module,
@@ -442,9 +442,9 @@ def build_answering_module(
     augmentation_type = trial.suggest_categorical(
         name="answering_module_type",
         choices=[
-            # "no augmentation",
+            "no augmentation",
             "independent augmentation",
-            # "cross augmentation",
+            "cross augmentation",
         ],
     )
     if augmentation_type == "no augmentation":
