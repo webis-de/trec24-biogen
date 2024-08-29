@@ -1,5 +1,5 @@
 from pathlib import Path
-from random import sample as random_sample
+from random import Random
 from typing import Annotated, Iterable, Sequence
 
 from annotated_types import Interval
@@ -18,6 +18,7 @@ from trec_biogen.model import (
     Question,
 )
 
+_random = Random(0)
 
 def load_clef_bioasq_questions(
     path: Path,
@@ -28,7 +29,7 @@ def load_clef_bioasq_questions(
         input = ClefBioAsqQuestions.model_validate_json(file.read())
     questions = input.questions
     if sample < 1:
-        questions = random_sample(questions, k=round(len(questions) * sample))
+        questions = _random.sample(questions, k=round(len(questions) * sample))
     questions_iterable: Iterable[ClefBioAsqQuestion] = questions
     if progress:
         questions_iterable = tqdm(
@@ -46,7 +47,7 @@ def load_trec_biogen_questions(
         input = TrecBioGenQuestions.model_validate_json(file.read())
     topics = input.topics
     if sample < 1:
-        topics = random_sample(topics, k=round(len(topics) * sample))
+        topics = _random.sample(topics, k=round(len(topics) * sample))
     topics_iterable: Iterable[TrecBioGenQuestion] = topics
     if progress:
         topics_iterable = tqdm(
@@ -79,7 +80,7 @@ def load_clef_bioasq_answers(
         input = ClefBioAsqAnswers.model_validate_json(file.read())
     questions = input.questions
     if sample < 1:
-        questions = random_sample(questions, k=round(len(questions) * sample))
+        questions = _random.sample(questions, k=round(len(questions) * sample))
     questions_iterable: Iterable[ClefBioAsqAnswer] = questions
     if progress:
         questions_iterable = tqdm(
