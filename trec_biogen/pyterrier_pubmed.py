@@ -86,8 +86,6 @@ class PubMedSentencePassager(Transformer):
 
     def _iter_title_snippets(self, row: Series) -> Iterator[Snippet]:
         article: Article = row["article"]
-        # TODO: Remove after debugging.
-        # print(article.to_dict())
         title = article.title
         if title is None:
             return

@@ -546,7 +546,7 @@ class TrecBioGenQuestion(BaseModel):
 
 _PATTERN_REFERENCE = re_compile(r".*\[(\d+(?:,\s*\d+)*)\]\s*[.!?]?")
 
-TrecBioGenAnswerString: TypeAlias = str  # TODO: Add validator.
+TrecBioGenAnswerString: TypeAlias = str  # TODO (later): Add validator.
 
 
 class TrecBioGenAnswer(BaseModel):

@@ -170,7 +170,6 @@ def evaluate_generation(
     measure: GenerationMeasure,
     language_model_name: LanguageModelName,
 ) -> float:
-    # TODO: Implement some useful measures, e.g.: Perplexity, BLEU, ROUGE, RAGAS (https://docs.ragas.io/en/stable/concepts/metrics/index.html), DeepEval (https://docs.confident-ai.com/docs/metrics-introduction), Tonic (https://docs.tonic.ai/validate/about-rag-metrics/tonic-validate-rag-metrics-summary), DSPy (https://dspy-docs.vercel.app/docs/building-blocks/metrics), etc.
     if measure == "yes-no-accuracy":
         yes_no_predictions_ground_truth = [
             (answer_prediction.exact, answer_ground_truth.exact)

@@ -33,7 +33,7 @@ _ModuleType = TypeVar("_ModuleType", bound=Module)
 OptimizerType: TypeAlias = Literal[
     "labeled-few-shot",
     "bootstrap-few-shot",
-    # TODO (later): Add other DSPy optimizers.
+    # TODO (maybe later): Add other DSPy optimizers.
 ]
 
 
