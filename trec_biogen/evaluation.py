@@ -1,4 +1,5 @@
 from math import inf, isnan
+from statistics import mean
 from typing import Literal, Mapping, Sequence, TypeAlias
 from warnings import catch_warnings, filterwarnings
 
@@ -20,6 +21,8 @@ from ragas.metrics import (
 )
 from ragas.metrics.base import Metric as RagasMeasure
 from ragas.run_config import RunConfig
+from rouge_score.rouge_scorer import RougeScorer
+from rouge_score.scoring import Score
 from sklearn.metrics import accuracy_score
 
 from trec_biogen.language_models import LanguageModelName, get_langchain_language_model
@@ -105,6 +108,8 @@ GenerationMeasure: TypeAlias = Literal[
     "answer-similarity",
     "answer-correctness",
     "summarization-score",
+    "rouge1-f1",
+    "rougeL-f1",
 ]
 
 
@@ -148,6 +153,16 @@ def _as_ragas_dataset(
         ]
     )
 
+
+def _rouge_sub_score(score: Score, sub_measure: str) -> float:
+    if sub_measure == "f1":
+        return score.fmeasure
+    elif sub_measure == "precision":
+        return score.precision
+    elif sub_measure == "recall":
+        return score.recall
+    else:
+        raise ValueError(f"Unknown sub-measure: {sub_measure}")
 
 def evaluate_generation(
     predictions: Sequence[GenerationAnswer],
@@ -214,5 +229,29 @@ def evaluate_generation(
         )
         result_df: DataFrame = result.to_pandas()  # type: ignore
         return float(result_df[ragas_measure.name].mean())
+    elif measure in (
+        "rouge1-f1",
+        "rougeL-f1",
+    ):
+        rouge_type, sub_measure = measure.split("-")
+        scorer = RougeScorer([rouge_type], use_stemmer=True)
+        scores: Sequence[Score] = [
+            scorer.score(
+                target=" ".join(
+                    sentence.sentence
+                    for sentence in answer_ground_truth.summary
+                ),
+                prediction=" ".join(
+                    sentence.sentence
+                    for sentence in answer_prediction.summary
+                ),
+            )[rouge_type]
+            for answer_prediction, answer_ground_truth in zip(predictions, ground_truth)
+        ]
+        sub_scores = [
+            _rouge_sub_score(score, sub_measure)
+            for score in scores
+        ]
+        return mean(sub_scores)
     else:
         raise ValueError(f"Invalid generation measure: {measure}")
