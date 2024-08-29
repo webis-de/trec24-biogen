@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Hashable, Iterable, Literal
-from warnings import catch_warnings, simplefilter
+from warnings import catch_warnings, simplefilter, warn
 
 from elasticsearch7_dsl.query import Nested, Query, Bool, Exists, Match, Terms
 from pandas import DataFrame, Series
@@ -41,6 +41,9 @@ class ContextQueryTransformer(Transformer):
                 query_parts.append(context.exact)
             else:
                 query_parts.extend(context.exact)
+
+        if len(query_parts) == 0:
+            warn(UserWarning(f"Empty query from context: {context}"))
 
         return " ".join(query_parts)
 
@@ -164,6 +167,7 @@ class ContextElasticsearchQueryTransformer(Transformer):
             filter=filters,
             must=musts,
             should=shoulds,
+            minimum_should_match=0,
         )
         return elasticsearch_query
 

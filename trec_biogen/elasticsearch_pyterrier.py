@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import islice
+from json import dumps
 from typing import Any, Callable, Generic, Hashable, Iterable, Type, TypeVar
 from warnings import warn
 
@@ -71,6 +72,8 @@ class ElasticsearchRetrieve(Generic[T], Transformer):
             for hit in hits
         ])
         if len(res) == 0:
+            warn(UserWarning(f"Did not find any results for query: {dumps({"query": query.to_dict()})}"))
+            
             # Fix columns when no results could be retrieved.
             res = DataFrame(columns=["qid", "docno", "score"])
         return res

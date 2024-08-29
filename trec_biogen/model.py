@@ -172,28 +172,6 @@ class PartialAnswer(Question):
     exact: ExactAnswer | None
     references: Sequence[RankedPubMedReference] | None
 
-    @model_validator(mode="after")
-    def check_references_match(self) -> Self:
-        summary: PubMedReferencesSummary = (
-            self.summary if self.summary is not None else []
-        )
-        references: Sequence[RankedPubMedReference] = (
-            self.references if self.references is not None else []
-        )
-        sentence_references = (
-            reference for sentence in summary for reference in sentence.references
-        )
-        dangling_references = [
-            sentence_reference
-            for sentence_reference in sentence_references
-            if not any(sentence_reference in reference for reference in references)
-        ]
-        if len(dangling_references) > 0:
-            raise ValueError(
-                f"Found {len(dangling_references)} dangling in-text references that are not covered by references in the references list: {dangling_references}"
-            )
-        return self
-
 
 class RetrievalAnswer(PartialAnswer, Question):
     model_config = ConfigDict(frozen=True)
@@ -210,6 +188,24 @@ class GenerationAnswer(PartialAnswer, Question):
 
 class Answer(RetrievalAnswer, GenerationAnswer, PartialAnswer, Question):
     model_config = ConfigDict(frozen=True)
+
+    @model_validator(mode="after")
+    def check_references_match(self) -> Self:
+        summary = self.summary
+        references = self.references
+        sentence_references = (
+            reference for sentence in summary for reference in sentence.references
+        )
+        dangling_references = [
+            sentence_reference
+            for sentence_reference in sentence_references
+            if not any(sentence_reference in reference for reference in references)
+        ]
+        if len(dangling_references) > 0:
+            raise ValueError(
+                f"Found {len(dangling_references)} dangling in-text references that are not covered by references in the references list: {dangling_references}"
+            )
+        return self
 
     def as_clef_bio_asq_answer(self) -> "ClefBioAsqAnswer":
         type: ClefBioAsqQuestionType
