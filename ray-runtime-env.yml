@@ -19,6 +19,7 @@ pip:
   - en_core_sci_sm @ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
   - more-itertools~=10.3
   - optuna~=3.6
+  - optuna-integration~=3.6
   - pandas~=2.0
   - pyarrow~=17.0
   - pydantic[email]~=2.5
@@ -31,4 +32,5 @@ pip:
   - scikit-learn~=1.5
   - spacy~=3.7
   - tqdm~=4.64
+  - wandb~=0.17.8
 logging_level: debug
