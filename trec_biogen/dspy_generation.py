@@ -54,7 +54,7 @@ def _dspy_optimize(
     if optimizer_type is None:
         return module
     elif len(examples) == 0:
-        print(f"Not optimizing DSPy module {module!r} due to no examples.")
+        print(f"Not optimizing DSPy module '{repr(module)[:50]}' due to no examples.")
         return module
     elif optimizer_type == "labeled-few-shot":
         # Tune the generation module with DSPy (to select few-shot examples).
@@ -64,7 +64,9 @@ def _dspy_optimize(
             high=3,
         )
         optimizer = LabeledFewShot(k=few_shot_k)
-        print(f"Optimizing DSPy module {module!r} with labeled few-shot optimizer...")
+        print(
+            f"Optimizing DSPy module '{repr(module)[:50]}' with labeled few-shot optimizer..."
+        )
         return optimizer.compile(
             student=module,
             trainset=examples,
@@ -95,7 +97,9 @@ def _dspy_optimize(
             max_rounds=max_rounds,
             max_errors=5,
         )
-        print(f"Optimizing DSPy module {module} with bootstrap few-shot optimizer...")
+        print(
+            f"Optimizing DSPy module '{repr(module)[:50]}' with bootstrap few-shot optimizer..."
+        )
         return optimizer.compile(
             student=module,
             trainset=examples,
@@ -275,7 +279,6 @@ class SummaryPredict(Module):
         )
 
 
-
 class _ExactYesNoSignature(Signature):
     """Answer the medical yes-no question based on the given reference snippets (from a relevant medical abstract), basic medical knowledge, and current standard practices from medical guidelines. The answer should be based mostly on the given references if the references are factually correct."""
 
@@ -355,7 +358,9 @@ def _exact_yes_no_examples(
             answer=answer.exact,
         ).with_inputs("question", "references")
         for answer in answers
-        if answer.type == "yes-no" and answer.exact is not None and isinstance(answer.exact, str)
+        if answer.type == "yes-no"
+        and answer.exact is not None
+        and isinstance(answer.exact, str)
     ]
 
 
@@ -369,7 +374,9 @@ def _exact_factual_examples(
             answer=answer.exact,
         ).with_inputs("question", "references")
         for answer in answers
-        if answer.type == "factual" and answer.exact is not None and isinstance(answer.exact, str)
+        if answer.type == "factual"
+        and answer.exact is not None
+        and isinstance(answer.exact, str)
     ]
 
 
@@ -383,7 +390,9 @@ def _exact_list_examples(
             answer="\n" + "\n".join(answer.exact),
         ).with_inputs("question", "references")
         for answer in answers
-        if answer.type == "list" and answer.exact is not None and not isinstance(answer.exact, str)
+        if answer.type == "list"
+        and answer.exact is not None
+        and not isinstance(answer.exact, str)
     ]
 
 
