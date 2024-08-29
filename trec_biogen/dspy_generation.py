@@ -1,6 +1,6 @@
 from functools import cached_property
 from re import compile as re_compile
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal, Sequence, TypeAlias
 from warnings import warn
 
 from dspy import (
@@ -11,10 +11,12 @@ from dspy import (
     Predict,
     ChainOfThought,
     Prediction,
+    Example,
 )
 from spacy import load as spacy_load, Language
 
 from trec_biogen.model import (
+    Answer,
     ExactAnswer,
     GenerationAnswer,
     PartialAnswer,
@@ -23,7 +25,10 @@ from trec_biogen.model import (
     RankedPubMedReference,
 )
 
-PredictType: TypeAlias = Literal["predict", "chain-of-thought"]
+PredictType: TypeAlias = Literal[
+    "predict",
+    "chain-of-thought",
+]
 
 
 class _SummarySignature(Signature):
@@ -52,7 +57,57 @@ class _SummarySignature(Signature):
 _PATTERN_REFERENCE = re_compile(r".*\[(\d+(?:,\s*\d+)*)\]\s*[.!?]?")
 
 
-class _SummaryPredict(Module):
+def _input_question(context: PartialAnswer) -> str:
+    return context.text
+
+
+def _input_references(
+    context: PartialAnswer,
+) -> tuple[str, dict[int, RankedPubMedReference]]:
+    references: dict[int, RankedPubMedReference] = (
+        {i: reference for i, reference in enumerate(context.references)}
+        if context.references is not None
+        else {}
+    )
+    references_text = "\n" + "\n".join(
+        f"\t[{i}] {reference.snippet.text}"
+        for i, reference in references.items()
+        if reference.snippet is not None
+    )
+    return references_text, references
+
+
+def _output_answer_sentence(
+    sentence: PubMedReferenceSentence, references: dict[str, int]
+) -> str:
+    reference_string: str
+    if len(sentence.references) > 0:
+        reference_ids = [
+            f"{references[reference.pubmed_id]}" for reference in sentence.references
+        ]
+        reference_ids_string = ",".join(reference_ids)
+        reference_string = f" [{reference_ids_string}]"
+    else:
+        reference_string = ""
+    sentence_text = sentence.sentence.strip()
+    if len(sentence_text) > 1 and sentence_text[-1] in (".", ":", "!", "?"):
+        return f"{sentence_text[:-1]}{reference_string}{sentence_text[-1]}"
+    else:
+        return f"{sentence_text}{reference_string}."
+
+
+def _output_summary_answer(answer: Answer) -> str:
+    _, references = _input_references(answer)
+    references_inverse = {
+        f"{reference.pubmed_id}": i for i, reference in references.items()
+    }
+    return " ".join(
+        _output_answer_sentence(sentence, references_inverse)
+        for sentence in answer.summary
+    )
+
+
+class SummaryPredict(Module):
     _predict: Predict | ChainOfThought
 
     @cached_property
@@ -94,26 +149,12 @@ class _SummaryPredict(Module):
             ],
         )
 
-    def forward(self, context: PartialAnswer, **kwargs) -> Prediction:
-        input_question = context.text
-        references: dict[int, RankedPubMedReference] = (
-            {
-                i: reference
-                for i, reference in enumerate(context.references)
-                if reference.snippet is not None
-            }
-            if context.references is not None
-            else {}
-        )
-        input_references = "\n" + "\n".join(
-            f"\t[{i}] {reference.snippet.text}"
-            for i, reference in references.items()
-            if reference.snippet is not None
-        )
+    def forward(self, context: PartialAnswer) -> Prediction:
+        question = _input_question(context)
+        references_text, references = _input_references(context)
         prediction: Prediction = self._predict.forward(
-            question=input_question,
-            references=input_references,
-            **kwargs,
+            question=question,
+            references=references_text,
         )
         output_answer: str = prediction["answer"]
 
@@ -128,6 +169,19 @@ class _SummaryPredict(Module):
         return Prediction(
             summary=summary,
         )
+
+
+def summary_predict_examples(
+    answers: Sequence[Answer],
+) -> list[Example]:
+    return [
+        Example(
+            question=_input_question(answer),
+            references=_input_references(answer)[0],
+            answer=_output_summary_answer(answer),
+        ).with_inputs("question", "references")
+        for answer in answers
+    ]
 
 
 class _ExactYesNoSignature(Signature):
@@ -199,7 +253,7 @@ class _ExactListSignature(Signature):
     ]
 
 
-class _ExactPredict(Module):
+class ExactPredict(Module):
     _predict_yes_no: Predict | ChainOfThought
     _predict_factual: Predict | ChainOfThought
     _predict_list: Predict | ChainOfThought
@@ -211,7 +265,6 @@ class _ExactPredict(Module):
     def __init__(
         self,
         predict_type: PredictType,
-        assertions_max_backtracks: int = 0,
     ) -> None:
         if predict_type == "predict":
             self._predict_yes_no = Predict(
@@ -234,10 +287,7 @@ class _ExactPredict(Module):
                 signature=_ExactListSignature,
             )
 
-    def forward(self, context: PartialAnswer, **kwargs) -> Prediction:
-        if "past_outputs" not in kwargs.keys():
-            kwargs["past_outputs"] = {}
-
+    def forward(self, context: PartialAnswer) -> Prediction:
         input_question = context.text
         references: dict[int, RankedPubMedReference] = (
             {
@@ -260,7 +310,6 @@ class _ExactPredict(Module):
             prediction = self._predict_yes_no.forward(
                 question=input_question,
                 references=input_references,
-                **kwargs,
             )
             output_answer = prediction["answer"]
             # Consider only first line.
@@ -283,7 +332,6 @@ class _ExactPredict(Module):
             prediction = self._predict_factual.forward(
                 question=input_question,
                 references=input_references,
-                **kwargs,
             )
             output_answer = prediction["answer"]
             # Consider only first line.
@@ -316,7 +364,6 @@ class _ExactPredict(Module):
             prediction = self._predict_list.forward(
                 question=input_question,
                 references=input_references,
-                **kwargs,
             )
             output_answer = prediction["answer"]
             items = [item.strip() for item in output_answer.split("\n")]
@@ -348,33 +395,61 @@ class _ExactPredict(Module):
         )
 
 
+def _output_exact_answer(answer: Answer) -> str:
+    if answer.exact is None:
+        return ""
+    if answer.type == "yes-no":
+        if not isinstance(answer.exact, str):
+            raise RuntimeError(f"Wrong yes-no exact answer: {answer.exact}")
+        return answer.exact
+    elif answer.type == "factual":
+        if not isinstance(answer.exact, str):
+            raise RuntimeError(f"Wrong factual exact answer: {answer.exact}")
+        return answer.exact
+    elif answer.type == "list":
+        if isinstance(answer.exact, str):
+            raise RuntimeError(f"Wrong list exact answer: {answer.exact}")
+        return "\n" + "\n".join(answer.exact)
+    elif answer.type == "definition":
+        return ""
+    elif answer.type == "reasoning":
+        return ""
+    else:
+        raise ValueError(f"Unknown question type: {answer.type}")
+
+
+def exact_predict_examples(
+    answers: Sequence[Answer],
+) -> list[Example]:
+    return [
+        Example(
+            question=_input_question(answer),
+            references=_input_references(answer)[0],
+            answer=_output_exact_answer(answer),
+        ).with_inputs("question", "references")
+        for answer in answers
+    ]
+
+
 class GenerationAnswerPredict(Module):
-    _summary_predict: _SummaryPredict
-    _exact_predict: _ExactPredict
+    _summary_predict: SummaryPredict
+    _exact_predict: ExactPredict
 
     def __init__(
         self,
-        summary_predict_type: PredictType,
-        exact_predict_type: PredictType,
-        assertions_max_backtracks: int = 0,
+        summary_predict: SummaryPredict,
+        exact_predict: ExactPredict,
     ) -> None:
-        self._summary_predict = _SummaryPredict(
-            predict_type=summary_predict_type,
-        )
-        self._exact_predict = _ExactPredict(
-            predict_type=exact_predict_type,
-            assertions_max_backtracks=assertions_max_backtracks,
-        )
+        self._summary_predict = summary_predict
+        self._exact_predict = exact_predict
 
-    def forward(self, context: PartialAnswer, **kwargs) -> Prediction:
+    def forward(self, context: PartialAnswer) -> Prediction:
         summary_prediction = self._summary_predict.forward(
             context=context,
-            **kwargs,
         )
         summary: PubMedReferencesSummary = summary_prediction.summary
         exact_prediction = self._exact_predict.forward(
             context=context,
-            **kwargs,
         )
         exact: ExactAnswer = exact_prediction.exact
 

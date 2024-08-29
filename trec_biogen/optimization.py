@@ -1,7 +1,6 @@
-from typing import Literal, Sequence
+from typing import Literal, Sequence, TypeAlias
 from warnings import catch_warnings, simplefilter
 
-from dspy import settings as dspy_settings, Example
 from dspy.teleprompt import LabeledFewShot
 from optuna import Study, Trial, create_study
 from optuna.study import StudyDirection
@@ -10,7 +9,7 @@ from optuna.trial import FrozenTrial
 from pyterrier.transformer import Transformer
 
 from trec_biogen.answering import IndependentAnsweringModule, RecurrentAnsweringModule
-from trec_biogen.dspy_generation import GenerationAnswerPredict, PredictType
+from trec_biogen.dspy_generation import ExactPredict, GenerationAnswerPredict, PredictType, SummaryPredict, exact_predict_examples, summary_predict_examples
 from trec_biogen.evaluation import (
     GenerationMeasure,
     RetrievalMeasure,
@@ -210,17 +209,11 @@ def _suggest_language_model_name(trial: Trial, name: str) -> LanguageModelName:
     )  # type: ignore
     return language_model_name
 
+OptimizerType: TypeAlias = Literal[
+    "labeled-few-shot",
+    # TODO (later): Add other DSPy optimizers.
+]
 
-def _as_dspy_examples(
-    answers: Sequence[Answer],
-) -> Sequence[Example]:
-    return [
-        Example(
-            context=answer.as_question().as_partial_answer(),
-            answer=answer,
-        ).with_inputs()
-        for answer in answers
-    ]
 
 def build_generation_module(
     answers: Sequence[Answer],
@@ -237,6 +230,10 @@ def build_generation_module(
             "chain-of-thought",
         ],
     )  # type: ignore
+    summary_predict = SummaryPredict(
+        predict_type=summary_predict_type,
+    )
+
     exact_predict_type: PredictType = trial.suggest_categorical(
         name="exact_predict_type",
         choices=[
@@ -244,15 +241,8 @@ def build_generation_module(
             "chain-of-thought",
         ],
     )  # type: ignore
-    assertions_max_backtracks: int = trial.suggest_int(
-        name="assertions_max_backtracks",
-        low=0,
-        high=5,
-    )
-    predict = GenerationAnswerPredict(
-        summary_predict_type=summary_predict_type,
-        exact_predict_type=exact_predict_type,
-        assertions_max_backtracks=assertions_max_backtracks,
+    exact_predict = ExactPredict(
+        predict_type=exact_predict_type,
     )
 
     language_model_name: LanguageModelName = _suggest_language_model_name(
@@ -261,16 +251,8 @@ def build_generation_module(
     )
     language_model = get_dspy_language_model(language_model_name)
 
-    # Allow us to specify the LM in the `forward()` call.
-    dspy_settings.configure(
-        experimental=True,
-    )
-
     # Optimization:
-    generation_optimizer: Literal[
-        "labeled-few-shot",
-        # TODO (later): Add other DSPy optimizers.
-    ] | None = trial.suggest_categorical(
+    generation_optimizer: OptimizerType | None = trial.suggest_categorical(
         name="generation_optimizer",
         choices=[
             "labeled-few-shot",
@@ -284,16 +266,29 @@ def build_generation_module(
             low=1,
             high=3,
         )
-        optimizer = LabeledFewShot(k=few_shot_k)
-        predict = optimizer.compile(
-            student=predict,
-            trainset=_as_dspy_examples(answers),
+        summary_optimizer = LabeledFewShot(k=few_shot_k)
+        print("Optimizing summary answer module...")
+        summary_predict = summary_optimizer.compile(
+            student=summary_predict,
+            trainset=summary_predict_examples(answers),
+            sample=True,
+        )
+        print("Optimizing exact answer module...")
+        exact_optimizer = LabeledFewShot(k=few_shot_k)
+        exact_predict = exact_optimizer.compile(
+            student=exact_predict,
+            trainset=exact_predict_examples(answers),
             sample=True,
         )
     elif generation_optimizer is None:
         pass
     else:
         raise ValueError(f"Unkown optimizer: {generation_optimizer}")
+
+    predict = GenerationAnswerPredict(
+        summary_predict=summary_predict,
+        exact_predict=exact_predict,
+    )
 
     return DspyGenerationModule(
         predict=predict,
