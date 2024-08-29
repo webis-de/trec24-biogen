@@ -37,7 +37,7 @@ class DspyGenerationModule(GenerationModule):
                 desc="Generate answers with DSPy",
                 unit="question",
             )
-        return [self.generate(context) for context in contexts]
+        return [self.generate(context) for context in contexts_iterable]
 
 
 @dataclass(frozen=True)
