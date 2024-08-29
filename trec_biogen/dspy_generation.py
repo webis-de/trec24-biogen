@@ -1,6 +1,6 @@
 from functools import cached_property
 from re import compile as re_compile
-from typing import Annotated, Literal, Sequence, TypeAlias
+from typing import Annotated, Literal, Self, Sequence, TypeAlias, TypeVar
 from warnings import warn
 
 from dspy import (
@@ -13,6 +13,8 @@ from dspy import (
     Prediction,
     Example,
 )
+from dspy.teleprompt import LabeledFewShot, BootstrapFewShot
+from optuna.trial._trial import Trial
 from spacy import load as spacy_load, Language
 
 from trec_biogen.model import (
@@ -24,6 +26,83 @@ from trec_biogen.model import (
     PubMedReferencesSummary,
     RankedPubMedReference,
 )
+
+_ModuleType = TypeVar("_ModuleType", bound=Module)
+
+
+OptimizerType: TypeAlias = Literal[
+    "labeled-few-shot",
+    "bootstrap-few-shot",
+    # TODO (later): Add other DSPy optimizers.
+]
+
+
+def _dspy_optimize(
+    module: _ModuleType,
+    trial: Trial,
+    examples: Sequence[Example],
+) -> _ModuleType:
+
+    optimizer_type: OptimizerType | None = trial.suggest_categorical(
+        name="dspy_optimizer",
+        choices=[
+            "labeled-few-shot",
+            "bootstrap-few-shot",
+            None,
+        ],
+    )  # type: ignore
+    if optimizer_type is None:
+        return module
+    elif len(examples) == 0:
+        print(f"Not optimizing DSPy module {module!r} due to no examples.")
+        return module
+    elif optimizer_type == "labeled-few-shot":
+        # Tune the generation module with DSPy (to select few-shot examples).
+        few_shot_k = trial.suggest_int(
+            name="dspy_labeled_few_shot_k",
+            low=1,
+            high=3,
+        )
+        optimizer = LabeledFewShot(k=few_shot_k)
+        print(f"Optimizing DSPy module {module!r} with labeled few-shot optimizer...")
+        return optimizer.compile(
+            student=module,
+            trainset=examples,
+            sample=True,
+        )
+    elif optimizer_type == "bootstrap-few-shot":
+        # Tune the generation module with DSPy (to select few-shot examples).
+        max_bootstrapped_demos = trial.suggest_int(
+            name="dspy_bootstrap_few_shot_max_bootstrapped_demos",
+            low=2,
+            high=4,
+        )
+        max_labeled_demos = trial.suggest_int(
+            name="dspy_bootstrap_few_shot_max_labeled_demos",
+            low=8,
+            high=16,
+        )
+        max_rounds = trial.suggest_int(
+            name="dspy_bootstrap_few_shot_max_rounds",
+            low=1,
+            high=3,
+        )
+        optimizer = BootstrapFewShot(
+            metric=None,
+            metric_threshold=None,
+            max_bootstrapped_demos=max_bootstrapped_demos,
+            max_labeled_demos=max_labeled_demos,
+            max_rounds=max_rounds,
+            max_errors=5,
+        )
+        print(f"Optimizing DSPy module {module} with bootstrap few-shot optimizer...")
+        return optimizer.compile(
+            student=module,
+            trainset=examples,
+        )
+    else:
+        raise ValueError(f"Unkown optimizer: {optimizer_type}")
+
 
 PredictType: TypeAlias = Literal[
     "predict",
@@ -57,11 +136,11 @@ class _SummarySignature(Signature):
 _PATTERN_REFERENCE = re_compile(r".*\[(\d+(?:,\s*\d+)*)\]\s*[.!?]?")
 
 
-def _input_question(context: PartialAnswer) -> str:
+def _question(context: PartialAnswer) -> str:
     return context.text
 
 
-def _input_references(
+def _references(
     context: PartialAnswer,
 ) -> tuple[str, dict[int, RankedPubMedReference]]:
     references: dict[int, RankedPubMedReference] = (
@@ -77,7 +156,7 @@ def _input_references(
     return references_text, references
 
 
-def _output_answer_sentence(
+def _summary_answer_sentence(
     sentence: PubMedReferenceSentence, references: dict[str, int]
 ) -> str:
     reference_string: str
@@ -96,15 +175,28 @@ def _output_answer_sentence(
         return f"{sentence_text}{reference_string}."
 
 
-def _output_summary_answer(answer: Answer) -> str:
-    _, references = _input_references(answer)
+def _summary_answer(answer: Answer) -> str:
+    _, references = _references(answer)
     references_inverse = {
         f"{reference.pubmed_id}": i for i, reference in references.items()
     }
     return " ".join(
-        _output_answer_sentence(sentence, references_inverse)
+        _summary_answer_sentence(sentence, references_inverse)
         for sentence in answer.summary
     )
+
+
+def _summary_examples(
+    answers: Sequence[Answer],
+) -> list[Example]:
+    return [
+        Example(
+            question=_question(answer),
+            references=_references(answer)[0],
+            answer=_summary_answer(answer),
+        ).with_inputs("question", "references")
+        for answer in answers
+    ]
 
 
 class SummaryPredict(Module):
@@ -149,9 +241,21 @@ class SummaryPredict(Module):
             ],
         )
 
+    def optimize(
+        self,
+        trial: Trial,
+        answers: Sequence[Answer],
+    ) -> Self:
+        self._predict = _dspy_optimize(
+            module=self._predict,
+            trial=trial,
+            examples=_summary_examples(answers),
+        )
+        return self
+
     def forward(self, context: PartialAnswer) -> Prediction:
-        question = _input_question(context)
-        references_text, references = _input_references(context)
+        question = _question(context)
+        references_text, references = _references(context)
         prediction: Prediction = self._predict.forward(
             question=question,
             references=references_text,
@@ -170,18 +274,6 @@ class SummaryPredict(Module):
             summary=summary,
         )
 
-
-def summary_predict_examples(
-    answers: Sequence[Answer],
-) -> list[Example]:
-    return [
-        Example(
-            question=_input_question(answer),
-            references=_input_references(answer)[0],
-            answer=_output_summary_answer(answer),
-        ).with_inputs("question", "references")
-        for answer in answers
-    ]
 
 
 class _ExactYesNoSignature(Signature):
@@ -253,6 +345,48 @@ class _ExactListSignature(Signature):
     ]
 
 
+def _exact_yes_no_examples(
+    answers: Sequence[Answer],
+) -> list[Example]:
+    return [
+        Example(
+            question=_question(answer),
+            references=_references(answer)[0],
+            answer=answer.exact,
+        ).with_inputs("question", "references")
+        for answer in answers
+        if answer.type == "yes-no" and answer.exact is not None and isinstance(answer.exact, str)
+    ]
+
+
+def _exact_factual_examples(
+    answers: Sequence[Answer],
+) -> list[Example]:
+    return [
+        Example(
+            question=_question(answer),
+            references=_references(answer)[0],
+            answer=answer.exact,
+        ).with_inputs("question", "references")
+        for answer in answers
+        if answer.type == "factual" and answer.exact is not None and isinstance(answer.exact, str)
+    ]
+
+
+def _exact_list_examples(
+    answers: Sequence[Answer],
+) -> list[Example]:
+    return [
+        Example(
+            question=_question(answer),
+            references=_references(answer)[0],
+            answer="\n" + "\n".join(answer.exact),
+        ).with_inputs("question", "references")
+        for answer in answers
+        if answer.type == "list" and answer.exact is not None and not isinstance(answer.exact, str)
+    ]
+
+
 class ExactPredict(Module):
     _predict_yes_no: Predict | ChainOfThought
     _predict_factual: Predict | ChainOfThought
@@ -287,6 +421,28 @@ class ExactPredict(Module):
                 signature=_ExactListSignature,
             )
 
+    def optimize(
+        self,
+        trial: Trial,
+        answers: Sequence[Answer],
+    ) -> Self:
+        self._predict_yes_no = _dspy_optimize(
+            module=self._predict_yes_no,
+            trial=trial,
+            examples=_exact_yes_no_examples(answers),
+        )
+        self._predict_factual = _dspy_optimize(
+            module=self._predict_factual,
+            trial=trial,
+            examples=_exact_factual_examples(answers),
+        )
+        self._predict_list = _dspy_optimize(
+            module=self._predict_list,
+            trial=trial,
+            examples=_exact_list_examples(answers),
+        )
+        return self
+
     def forward(self, context: PartialAnswer) -> Prediction:
         input_question = context.text
         references: dict[int, RankedPubMedReference] = (
@@ -314,9 +470,15 @@ class ExactPredict(Module):
             output_answer = prediction["answer"]
             # Consider only first line.
             output_answer = output_answer.split("\n")[0]
+            # Consider only text before the first divider (consecutive dashes).
+            output_answer = output_answer.split("---")[0]
+            # Consider only text before the first period.
+            output_answer = output_answer.split(".")[0]
+            # Consider only text before the first comma.
+            output_answer = output_answer.split(",")[0]
             output_answer = output_answer.strip()
-            # Ignore period at the end and lower-case.
-            output_answer = output_answer.removesuffix(".").lower()
+            # Ignore case.
+            output_answer = output_answer.lower()
             if output_answer == "yes":
                 exact = "yes"
             elif output_answer == "no":
@@ -336,6 +498,12 @@ class ExactPredict(Module):
             output_answer = prediction["answer"]
             # Consider only first line.
             output_answer = output_answer.split("\n")[0]
+            # Consider only text before the first divider (consecutive dashes).
+            output_answer = output_answer.split("---")[0]
+            # Consider only text before the first period.
+            output_answer = output_answer.split(".")[0]
+            # Consider only text before the first comma.
+            output_answer = output_answer.split(",")[0]
             output_answer = output_answer.strip()
             if len(output_answer) == 0:
                 warn(
@@ -366,7 +534,15 @@ class ExactPredict(Module):
                 references=input_references,
             )
             output_answer = prediction["answer"]
+            # Consider only text before the first double newline.
+            output_answer = output_answer.split("\n\n")[0]
+            # Consider only text before the first divider (consecutive dashes).
+            output_answer = output_answer.split("---")[0]
             items = [item.strip() for item in output_answer.split("\n")]
+            # Consider only text before the first period.
+            items = [item.split(".")[0] for item in items if len(item) > 0]
+            # Consider only text before the first comma.
+            items = [item.split(",")[0] for item in items if len(item) > 0]
             items = [item for item in items if len(item) > 0]
             if len(items) == 0:
                 warn(
@@ -395,42 +571,6 @@ class ExactPredict(Module):
         )
 
 
-def _output_exact_answer(answer: Answer) -> str:
-    if answer.exact is None:
-        return ""
-    if answer.type == "yes-no":
-        if not isinstance(answer.exact, str):
-            raise RuntimeError(f"Wrong yes-no exact answer: {answer.exact}")
-        return answer.exact
-    elif answer.type == "factual":
-        if not isinstance(answer.exact, str):
-            raise RuntimeError(f"Wrong factual exact answer: {answer.exact}")
-        return answer.exact
-    elif answer.type == "list":
-        if isinstance(answer.exact, str):
-            raise RuntimeError(f"Wrong list exact answer: {answer.exact}")
-        return "\n" + "\n".join(answer.exact)
-    elif answer.type == "definition":
-        return ""
-    elif answer.type == "reasoning":
-        return ""
-    else:
-        raise ValueError(f"Unknown question type: {answer.type}")
-
-
-def exact_predict_examples(
-    answers: Sequence[Answer],
-) -> list[Example]:
-    return [
-        Example(
-            question=_input_question(answer),
-            references=_input_references(answer)[0],
-            answer=_output_exact_answer(answer),
-        ).with_inputs("question", "references")
-        for answer in answers
-    ]
-
-
 class GenerationAnswerPredict(Module):
     _summary_predict: SummaryPredict
     _exact_predict: ExactPredict
@@ -442,6 +582,15 @@ class GenerationAnswerPredict(Module):
     ) -> None:
         self._summary_predict = summary_predict
         self._exact_predict = exact_predict
+
+    def optimize(
+        self,
+        trial: Trial,
+        answers: Sequence[Answer],
+    ) -> Self:
+        self._summary_predict.optimize(trial, answers)
+        self._exact_predict.optimize(trial, answers)
+        return self
 
     def forward(self, context: PartialAnswer) -> Prediction:
         summary_prediction = self._summary_predict.forward(

@@ -1,15 +1,20 @@
-from typing import Literal, Sequence, TypeAlias
+from typing import Literal, Sequence
 from warnings import catch_warnings, simplefilter
 
-from dspy.teleprompt import LabeledFewShot
+from dspy import settings as dspy_settings
 from optuna import Study, Trial, create_study
-from optuna.study import StudyDirection
+from optuna.study import StudyDirection, MaxTrialsCallback
 from optuna.exceptions import ExperimentalWarning
-from optuna.trial import FrozenTrial
+from optuna.trial import FrozenTrial, TrialState
 from pyterrier.transformer import Transformer
 
 from trec_biogen.answering import IndependentAnsweringModule, RecurrentAnsweringModule
-from trec_biogen.dspy_generation import ExactPredict, GenerationAnswerPredict, PredictType, SummaryPredict, exact_predict_examples, summary_predict_examples
+from trec_biogen.dspy_generation import (
+    ExactPredict,
+    GenerationAnswerPredict,
+    PredictType,
+    SummaryPredict,
+)
 from trec_biogen.evaluation import (
     GenerationMeasure,
     RetrievalMeasure,
@@ -209,11 +214,6 @@ def _suggest_language_model_name(trial: Trial, name: str) -> LanguageModelName:
     )  # type: ignore
     return language_model_name
 
-OptimizerType: TypeAlias = Literal[
-    "labeled-few-shot",
-    # TODO (later): Add other DSPy optimizers.
-]
-
 
 def build_generation_module(
     answers: Sequence[Answer],
@@ -251,44 +251,16 @@ def build_generation_module(
     )
     language_model = get_dspy_language_model(language_model_name)
 
-    # Optimization:
-    generation_optimizer: OptimizerType | None = trial.suggest_categorical(
-        name="generation_optimizer",
-        choices=[
-            "labeled-few-shot",
-            # None,
-        ],
-    ) # type: ignore
-    if generation_optimizer == "labeled-few-shot":
-        # Tune the generation module with DSPy (to select few-shot examples).
-        few_shot_k = trial.suggest_int(
-            name="labeled_few_shot_optimizer_k",
-            low=1,
-            high=3,
-        )
-        summary_optimizer = LabeledFewShot(k=few_shot_k)
-        print("Optimizing summary answer module...")
-        summary_predict = summary_optimizer.compile(
-            student=summary_predict,
-            trainset=summary_predict_examples(answers),
-            sample=True,
-        )
-        print("Optimizing exact answer module...")
-        exact_optimizer = LabeledFewShot(k=few_shot_k)
-        exact_predict = exact_optimizer.compile(
-            student=exact_predict,
-            trainset=exact_predict_examples(answers),
-            sample=True,
-        )
-    elif generation_optimizer is None:
-        pass
-    else:
-        raise ValueError(f"Unkown optimizer: {generation_optimizer}")
-
     predict = GenerationAnswerPredict(
         summary_predict=summary_predict,
         exact_predict=exact_predict,
     )
+
+    # Optimization:
+    with dspy_settings.context(
+        lm=language_model,
+    ):
+        predict.optimize(trial, answers)
 
     return DspyGenerationModule(
         predict=predict,
@@ -313,7 +285,7 @@ def build_generation_augmented_retrieval_module(
     num_augmentations = trial.suggest_int(
         name="generation_augmented_retrieval_num_augmentations",
         low=1,
-        high=10,
+        high=5,
     )
     # Should we also augment the generation module after augmenting the retrieval module or keep the generation module fixed?
     back_augment = trial.suggest_categorical(
@@ -350,7 +322,7 @@ def build_retrieval_augmented_generation_module(
     num_augmentations = trial.suggest_int(
         name="retrieval_augmented_generation_num_augmentations",
         low=1,
-        high=10,
+        high=5,
     )
     # Should we also augment the retrieval module after augmenting the generation module or keep the retrieval module fixed?
     back_augment = trial.suggest_categorical(
@@ -431,7 +403,7 @@ def build_answering_module_cross_augmentation(
     steps = trial.suggest_int(
         name="answering_module_cross_augmentation_steps",
         low=1,
-        high=10,
+        high=5,
     )
     return RecurrentAnsweringModule(
         answering_module=answering_module,
@@ -451,6 +423,7 @@ def build_answering_module(
     augmentation_type = trial.suggest_categorical(
         name="answering_module_type",
         choices=[
+            # TODO
             "no augmentation",
             # "independent augmentation",
             # "cross augmentation",
@@ -514,9 +487,19 @@ def optimize_answering_module(
         )
     study.optimize(
         func=objective,
-        n_trials=trials,
+        n_trials=None,
         timeout=timeout,
         n_jobs=parallelism,
         show_progress_bar=progress,
+        callbacks=(
+            [
+                MaxTrialsCallback(
+                    n_trials=trials,
+                    states=(TrialState.COMPLETE,),
+                )
+            ]
+            if trials is not None
+            else []
+        ),
     )
     return study.best_trials
