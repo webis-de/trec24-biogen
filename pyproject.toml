@@ -28,7 +28,7 @@ dependencies = [
     "en_core_sci_sm @ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz",
     "jupyter~=1.0",
     "more-itertools~=10.3",
-    "optuna~=3.6",
+    "optuna~=4.0",
     "optuna-integration~=3.6",
     "pandas~=2.0",
     "pyarrow~=17.0",
