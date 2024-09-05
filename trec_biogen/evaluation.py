@@ -227,7 +227,10 @@ def evaluate_generation(
             )
         )
         result_df: DataFrame = result.to_pandas()  # type: ignore
-        return float(result_df[ragas_measure.name].mean())
+        metric = float(result_df[ragas_measure.name].mean())
+        if isnan(metric):
+            return 0
+        return metric
     elif measure in (
         "rouge1-f1",
         "rougeL-f1",
