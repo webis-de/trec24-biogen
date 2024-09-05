@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Hashable, Iterable, Literal
-from warnings import catch_warnings, simplefilter, warn
+from warnings import catch_warnings, simplefilter
 
-from elasticsearch7_dsl.query import Nested, Query, Bool, Exists, Match, Terms
+from elasticsearch7_dsl.query import Nested, Query, Bool, Exists, Match, Term, Terms
+from optuna import TrialPruned
 from pandas import DataFrame, Series
 from pyterrier.transformer import Transformer
 from spacy import Language, load as spacy_load
@@ -43,7 +44,7 @@ class ContextQueryTransformer(Transformer):
                 query_parts.extend(context.exact)
 
         if len(query_parts) == 0:
-            warn(UserWarning(f"Empty query from context: {context}"))
+            raise TrialPruned(f"Empty query from context: {context}")
 
         return " ".join(query_parts)
 
@@ -101,6 +102,7 @@ class ContextElasticsearchQueryTransformer(Transformer):
     remove_stopwords: bool
     match_title: Literal["must", "should"] | None
     match_abstract: Literal["must", "should"] | None
+    match_full_text: Literal["must", "should"] | None
     match_mesh_terms: Literal["must", "should"] | None
     progress: bool = False
 
@@ -133,6 +135,8 @@ class ContextElasticsearchQueryTransformer(Transformer):
                 path="publication_types",
                 query=Terms(term=_DISALLOWED_PUBLICATION_TYPES),
             ))
+        # TODO (later): Make this a hyperparameter.
+        filters.append(Term(is_included_trec_biogen_2024=True))
 
         musts = []
         shoulds = []
@@ -148,6 +152,12 @@ class ContextElasticsearchQueryTransformer(Transformer):
             musts.append(match_abstract)
         elif self.match_abstract == "should":
             shoulds.append(match_abstract)
+        
+        match_full_text = Match(full_text=query)
+        if self.match_full_text == "must":
+            musts.append(match_full_text)
+        elif self.match_full_text == "should":
+            shoulds.append(match_full_text)
 
         match_mesh_terms = Nested(
             path="mesh_terms",

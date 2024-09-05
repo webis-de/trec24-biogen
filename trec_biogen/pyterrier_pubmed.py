@@ -89,6 +89,8 @@ class PubMedSentencePassager(Transformer):
         title = article.title
         if title is None:
             return
+        if not (title.endswith(".") or title.endswith("!") or title.endswith("?")):
+            title = f"{title}."
         yield Snippet(
             text=title,
             start_section="title",
