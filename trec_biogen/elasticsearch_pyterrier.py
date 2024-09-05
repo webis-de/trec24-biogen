@@ -75,7 +75,7 @@ class ElasticsearchRetrieve(Generic[T], Transformer):
             warn(UserWarning(f"Did not find any results for query: {dumps({"query": query.to_dict()})}"))
             
             # Fix columns when no results could be retrieved.
-            res = DataFrame(columns=["qid", "docno", "score"])
+            res = DataFrame(columns=["qid", "query", "docno", "score"])
         return res
 
     def transform(self, topics_or_res: DataFrame) -> DataFrame:
