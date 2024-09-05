@@ -15,7 +15,7 @@ LanguageModelName: TypeAlias = Literal[
 
 _BLABLADOR_MODEL_NAMES: Mapping[LanguageModelName, str] = {
     "blablador:Mistral-7B-Instruct-v0.3": \
-        " 1 - Mistral-7B-Instruct-v0.3 - the best option in general - fast and good (If it fails to respond then choose another model)",
+        " 1 - Mistral-7B-Instruct-v0.3 - the best option in general - fast and good (new version july 2024)",
     "blablador:Mixtral-8x7B-Instruct-v0.1": \
         "2 - Mixtral-8x7B-Instruct-v0.1 Slower with higher quality",
     "blablador:Llama3.1-8B-Instruct": \
