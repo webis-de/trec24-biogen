@@ -11,6 +11,7 @@ LanguageModelName: TypeAlias = Literal[
     "blablador:Mistral-7B-Instruct-v0.3",
     "blablador:Mixtral-8x7B-Instruct-v0.1",
     "blablador:Llama3.1-8B-Instruct",
+    "openai:gpt-4o-mini-2024-07-18",
 ]
 
 _BLABLADOR_MODEL_NAMES: Mapping[LanguageModelName, str] = {
@@ -36,6 +37,34 @@ def get_dspy_language_model(name: LanguageModelName) -> DSPyLanguageModel:
             model=blablador_name,
             api_key=environ["BLABLADOR_API_KEY"],
             api_base="https://helmholtz-blablador.fz-juelich.de:8000/v1/",
+            stop=(
+                "\n\n", 
+                "---",
+            ),
+            temperature=0,
+            max_tokens=150,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            n=1,
+        )
+    elif (
+        name == "openai:gpt-4o-mini-2024-07-18"
+    ):
+        return DSPyOpenAI(
+            model=name.removeprefix("openai:"),
+            api_key=environ["OPENAI_API_KEY"],
+            api_base="https://api.openai.com/v1/",
+            stop=(
+                "\n\n", 
+                "---",
+            ),
+            temperature=0,
+            max_tokens=150,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            n=1,
         )
     else:
         raise ValueError(f"Unknown language model: {name}")
@@ -57,6 +86,27 @@ def get_langchain_language_model(name: LanguageModelName) -> LangchainLanguageMo
             model=blablador_name,
             api_key=SecretStr(environ["BLABLADOR_API_KEY"]),
             base_url="https://helmholtz-blablador.fz-juelich.de:8000/v1/",
+            temperature=0,
+            max_tokens=150,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            n=1,
+        )
+    elif (
+        name == "openai:gpt-4o-mini-2024-07-18"
+    ):
+        blablador_name = _BLABLADOR_MODEL_NAMES[name]
+        return LangchainOpenAI(
+            model=name.removeprefix("openai:"),
+            api_key=SecretStr(environ["OPENAI_API_KEY"]),
+            base_url="https://api.openai.com/v1/",
+            temperature=0,
+            max_tokens=150,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            n=1,
         )
     else:
         raise ValueError(f"Unknown language model: {name}")
