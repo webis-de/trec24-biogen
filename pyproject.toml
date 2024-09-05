@@ -26,6 +26,8 @@ dependencies = [
     "elasticsearch7-dsl~=7.3",
     "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl",
     "en_core_sci_sm @ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz",
+    "ir-measures~=0.3.3",
+    "joblib~=1.4",
     "jupyter~=1.0",
     "more-itertools~=10.3",
     "optuna~=3.6",
