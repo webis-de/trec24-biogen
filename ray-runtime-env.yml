@@ -8,31 +8,42 @@ excludes:
   - __pycache__/
 py_modules:
   - trec_biogen/
-pip:
+conda:
+  channels:
+    - conda-forge
+    - defaults
+    - anaconda
+  dependencies:
+  - gcc
+  - zlib
   - aiohttp~=3.9
   - certifi~=2024.7
   - cyclopts~=2.9
   - dspy-ai~=2.4.13
-  - elasticsearch7~=7.17
-  - elasticsearch7-dsl~=7.3
-  - en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
-  - en_core_sci_sm @ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
   - more-itertools~=10.3
   - optuna~=3.6
   - optuna-integration~=3.6
   - pandas~=2.0
   - pyarrow~=17.0
-  - pydantic[email]~=2.5
+  - pydantic~=2.5
   - pypdf~=4.2
   - python-dotenv~=1.0
-  - pyterrier-dr @ git+https://github.com/terrierteam/pyterrier_dr.git@123a5d0e76824b275bad910f76547b811baebebb
-  - pyterrier-t5 @ git+https://github.com/terrierteam/pyterrier_t5.git@679e3320b0f7c997de108bc44f66ef15fba72f08
-  - python-terrier~=0.11.0
   - ragas~=0.1.15
-  - ray-elasticsearch~=0.2.2
   - rouge-score~=0.1.2
   - scikit-learn~=1.5
   - spacy~=3.7
   - tqdm~=4.64
-  - wandb~=0.17.8
+  - pip~=24.2
+  - pip:
+    - elasticsearch7~=7.17
+    - elasticsearch7-dsl~=7.3
+    - en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+    - en_core_sci_sm @ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
+    - ir-measures~=0.3.3
+    - pydantic[email]~=2.5
+    - pyterrier-dr @ git+https://github.com/terrierteam/pyterrier_dr.git@123a5d0e76824b275bad910f76547b811baebebb
+    - pyterrier-t5 @ git+https://github.com/terrierteam/pyterrier_t5.git@679e3320b0f7c997de108bc44f66ef15fba72f08
+    - python-terrier~=0.11.0
+    - ray-elasticsearch~=0.2.2
+    - wandb~=0.17.8
 logging_level: debug
