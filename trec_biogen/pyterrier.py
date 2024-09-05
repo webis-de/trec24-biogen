@@ -21,6 +21,8 @@ class CutoffRerank(Transformer):
 
     def transform(self, topics_or_res: DataFrame) -> DataFrame:
         topics_or_res = self.candidates.transform(topics_or_res)
+        if len(topics_or_res) == 0:
+            return topics_or_res
         pipeline = Transformer.from_df(
             input=topics_or_res,
             uniform=True,

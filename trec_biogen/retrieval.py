@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from typing import Iterable, Sequence
+from warnings import catch_warnings, simplefilter
 
-from pandas import DataFrame
+from pandas import DataFrame, isna
 from pyterrier.transformer import Transformer
 from tqdm.auto import tqdm
 
@@ -50,11 +51,11 @@ class PyterrierRetrievalModule(RetrievalModule, Transformer):
                             end_section=row["end_section"],
                             end_offset=row["end_offset"],
                         )
-                        if row["text"]
-                        and row["start_section"]
-                        and row["start_offset"]
-                        and row["end_section"]
-                        and row["end_offset"]
+                        if not isna(row["text"])
+                        and not isna(row["start_section"])
+                        and not isna(row["start_offset"])
+                        and not isna(row["end_section"])
+                        and not isna(row["end_offset"])
                         else None
                     ),
                     rank=row["rank"],
@@ -86,7 +87,9 @@ class PyterrierRetrievalModule(RetrievalModule, Transformer):
             ],
             columns=["qid", "context"],
         )
-        res = self.transform(res)
+        with catch_warnings():
+            simplefilter(action="ignore", category=FutureWarning)
+            res = self.transform(res)
         res.sort_values(
             ["qid", "rank"],
             ascending=[True, True],

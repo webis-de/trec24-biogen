@@ -135,6 +135,8 @@ class PubMedSentencePassager(Transformer):
 
     def transform(self, topics_or_res: DataFrame) -> DataFrame:
         columns = list(set(topics_or_res.columns) | {
+            "docno",
+            "text",
             "start_section",
             "start_offset",
             "end_section",
