@@ -2,7 +2,7 @@ from typing import Annotated
 
 from annotated_types import Ge, Gt, Interval
 from cyclopts import App, Parameter
-from cyclopts.types import ResolvedFile, ResolvedExistingFile
+from cyclopts.types import ResolvedExistingDirectory, ResolvedFile, ResolvedExistingFile
 from cyclopts.validators import Number
 from dotenv import load_dotenv, find_dotenv
 from email_validator import validate_email
@@ -123,10 +123,14 @@ def _retrieval_measures(type_, *values):
 @app.command()
 def optimize(
     answers_path: ResolvedExistingFile,
+    study_storage_path: ResolvedFile,
+    study_name: str,
     *,
     sample: Annotated[
         float, Interval(ge=0, le=1), Parameter(validator=Number(gte=0, lte=1))
-    ] = 1,
+    ] | Annotated[
+        int, Interval(gt=0), Parameter(validator=Number(gt=0))
+    ] = 1.0,
     retrieval_measures: Annotated[
         list[RetrievalMeasure], Parameter(converter=_retrieval_measures)
     ] = [],
@@ -135,6 +139,9 @@ def optimize(
     timeout: Annotated[float, Gt(0), Parameter(validator=Number(gt=0))] | None = None,
     parallelism: Annotated[int, Ge(1), Parameter(validator=Number(gte=1))] = 1,
     progress: bool = False,
+    wandb: bool = False,
+    ray: bool = False,
+    resume: bool = False,
 ) -> None:
     if find_dotenv():
         load_dotenv()
@@ -148,8 +155,9 @@ def optimize(
         progress=True,
     )
     print(f"Found {len(answers)} answers.")
-
-    best_trials = optimize_answering_module(
+    optimize_answering_module(
+        study_storage_path=study_storage_path,
+        study_name=study_name,
         answers=answers,
         retrieval_measures=retrieval_measures,
         generation_measures=generation_measures,
@@ -157,6 +165,72 @@ def optimize(
         timeout=timeout,
         parallelism=parallelism,
         progress=progress,
+        wandb=wandb,
+        ray=ray,
+        resume=resume,
     )
-    for trial in best_trials:
-        print(trial.values, trial.params)
+    
+
+@app.command()
+def num_trials(
+    study_storage_path: ResolvedFile,
+    study_name: str,
+) -> None:
+    from trec_biogen.optimization import num_trials
+    print(num_trials(
+        study_storage_path=study_storage_path,
+        study_name=study_name,
+    ))
+
+@app.command()
+def prepare_trec_submissions(
+    answers_path: ResolvedExistingFile,
+    study_storage_path: ResolvedFile,
+    study_name: str,
+    submissions_path: ResolvedExistingDirectory,
+    questions_path: ResolvedExistingFile,
+    *,
+    team_id: str,
+    contact_email: str,
+    sample: Annotated[
+        float, Interval(ge=0, le=1), Parameter(validator=Number(gte=0, lte=1))
+    ] | Annotated[
+        int, Interval(gt=0), Parameter(validator=Number(gt=0))
+    ] = 1.0,
+    retrieval_measures: Annotated[
+        list[RetrievalMeasure], Parameter(converter=_retrieval_measures)
+    ] = [],
+    generation_measures: list[GenerationMeasure] = [],
+    top_k: int | None = None,
+) -> None:
+    if find_dotenv():
+        load_dotenv()
+        
+    from trec_biogen.datasets import load_answers, load_questions
+    from trec_biogen.trec_submissions import prepare_trec_submissions as _prepare_trec_submissions
+
+    answers = load_answers(
+        path=answers_path,
+        sample=sample,
+        progress=True,
+    )
+    print(f"Found {len(answers)} answers.")
+
+    questions = load_questions(
+        path=questions_path,
+        progress=True,
+    )
+    print(f"Found {len(questions)} questions.")
+
+    _prepare_trec_submissions(
+        study_storage_path=study_storage_path,
+        study_name=study_name,
+        submissions_path=submissions_path,
+        answers=answers,
+        retrieval_measures=retrieval_measures,
+        generation_measures=generation_measures,
+        questions=questions,
+        team_id=team_id,
+        contact_email=contact_email,
+        top_k=top_k,
+    )
