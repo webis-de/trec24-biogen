@@ -717,3 +717,24 @@ def optimize_answering_module(
             catch=[],
         )
     return study.best_trials
+
+
+def num_trials(
+    study_storage_path: Path,
+    study_name: str,
+) -> int:
+    with catch_warnings():
+        simplefilter(action="ignore", category=ExperimentalWarning)
+        storage = JournalStorage(
+            log_storage=JournalFileStorage(
+                file_path=str(study_storage_path), 
+                lock_obj=JournalFileOpenLock(str(study_storage_path)),
+            ),
+        )
+    study: Study = load_study(
+        storage=storage,
+        study_name=study_name,
+    )
+    trials = study.trials
+    trials = [trial for trial in trials if trial.state == TrialState.COMPLETE]
+    return len(trials)
