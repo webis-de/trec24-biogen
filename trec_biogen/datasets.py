@@ -22,13 +22,19 @@ _random = Random(0)
 
 def load_clef_bioasq_questions(
     path: Path,
-    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    sample: Annotated[float, Interval(ge=0, le=1)] | Annotated[int, Interval(gt=0)] = 1.0,
     progress: bool = False,
 ) -> Sequence[Question]:
     with path.open("rb") as file:
         input = ClefBioAsqQuestions.model_validate_json(file.read())
     questions = input.questions
-    if sample < 1:
+    if sample == 0.0:
+        return []
+    elif sample == 1.0:
+        pass
+    elif sample > 1:
+        questions = _random.sample(questions, k=int(sample))
+    else:
         questions = _random.sample(questions, k=round(len(questions) * sample))
     questions_iterable: Iterable[ClefBioAsqQuestion] = questions
     if progress:
@@ -40,13 +46,19 @@ def load_clef_bioasq_questions(
 
 def load_trec_biogen_questions(
     path: Path,
-    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    sample: Annotated[float, Interval(ge=0, le=1)] | Annotated[int, Interval(gt=0)] = 1.0,
     progress: bool = False,
 ) -> Sequence[Question]:
     with path.open("rb") as file:
         input = TrecBioGenQuestions.model_validate_json(file.read())
     topics = input.topics
-    if sample < 1:
+    if sample == 0.0:
+        return []
+    elif sample == 1.0:
+        pass
+    elif sample > 1:
+        topics = _random.sample(topics, k=int(sample))
+    else:
         topics = _random.sample(topics, k=round(len(topics) * sample))
     topics_iterable: Iterable[TrecBioGenQuestion] = topics
     if progress:
@@ -58,7 +70,7 @@ def load_trec_biogen_questions(
 
 def load_questions(
     path: Path,
-    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    sample: Annotated[float, Interval(ge=0, le=1)] | Annotated[int, Interval(gt=0)] = 1.0,
     progress: bool = False,
 ) -> Sequence[Question]:
     if path.name.startswith("BioASQ") and path.name.endswith(".json"):
@@ -73,13 +85,19 @@ def load_questions(
 
 def load_clef_bioasq_answers(
     path: Path,
-    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    sample: Annotated[float, Interval(ge=0, le=1)] | Annotated[int, Interval(gt=0)] = 1.0,
     progress: bool = False,
 ) -> Sequence[Answer]:
     with path.open("rb") as file:
         input = ClefBioAsqAnswers.model_validate_json(file.read())
     questions = input.questions
-    if sample < 1:
+    if sample == 0.0:
+        return []
+    elif sample == 1.0:
+        pass
+    elif sample > 1:
+        questions = _random.sample(questions, k=int(sample))
+    else:
         questions = _random.sample(questions, k=round(len(questions) * sample))
     questions_iterable: Iterable[ClefBioAsqAnswer] = questions
     if progress:
@@ -91,7 +109,7 @@ def load_clef_bioasq_answers(
 
 def load_answers(
     path: Path,
-    sample: Annotated[float, Interval(ge=0, le=1)] = 1,
+    sample: Annotated[float, Interval(ge=0, le=1)] | Annotated[int, Interval(gt=0)] = 1.0,
     progress: bool = False,
 ) -> Sequence[Answer]:
     if path.name.startswith("training") and path.name.endswith("_new.json"):
