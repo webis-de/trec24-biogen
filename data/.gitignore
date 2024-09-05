@@ -3,3 +3,4 @@ BioGen2024topics-json.txt
 pubmed_ids_last_20_years.txt.gz
 training*_new.json
 training*_new.trec.json
+submissions/
