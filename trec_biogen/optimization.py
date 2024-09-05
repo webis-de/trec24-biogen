@@ -1,16 +1,23 @@
+from pathlib import Path
 from typing import Callable, Literal, Sequence, TypeAlias
 from warnings import catch_warnings, simplefilter, filterwarnings
 
 from dspy import settings as dspy_settings
-from optuna import Study, Trial, create_study
+from joblib import parallel_backend
+from optuna import Study, create_study
 from optuna.exceptions import TrialPruned
 from optuna.study import StudyDirection
 from optuna.exceptions import ExperimentalWarning
-from optuna.trial import FrozenTrial
+from optuna.samplers import TPESampler
+from optuna.study.study import load_study
+from optuna.trial import FrozenTrial, BaseTrial, TrialState
+from optuna.storages import JournalStorage, JournalFileOpenLock, JournalFileStorage
 from optuna_integration import WeightsAndBiasesCallback
 from pyterrier.transformer import Transformer
 from pyterrier_t5 import MonoT5ReRanker, DuoT5ReRanker
 from pyterrier_dr import TasB, TctColBert, Ance
+from ray import init as ray_init
+from ray.util.joblib import register_ray
 
 from trec_biogen.answering import IndependentAnsweringModule, RecurrentAnsweringModule
 from trec_biogen.dspy_generation import (
@@ -44,7 +51,9 @@ from trec_biogen.retrieval import (
 )
 
 
-def _suggest_must_should(trial: Trial, name: str) -> Literal["must", "should"] | None:
+def suggest_must_should(
+    trial: BaseTrial, name: str
+) -> Literal["must", "should"] | None:
     must_should = trial.suggest_categorical(
         name=name,
         choices=["must", "should", None],
@@ -57,7 +66,6 @@ def _suggest_must_should(trial: Trial, name: str) -> Literal["must", "should"] |
         return None
     else:
         raise ValueError(f"Illegal value: {must_should}")
-
 
 
 PointwiseRerankerModel: TypeAlias = Literal[
@@ -74,44 +82,43 @@ PairwiseRerankerModel: TypeAlias = Literal[
     "castorini/duot5-3b-med-msmarco",
 ]
 
+
 def build_retrieval_module(
-    trial: Trial,
+    trial: BaseTrial,
 ) -> RetrievalModule:
     """
     Build a simple retrieval module based on hyperparameters drawn from the trial.
     """
     pipeline: Transformer = Transformer.identity()
-    include_question=trial.suggest_categorical(
+    include_question = trial.suggest_categorical(
         name="context_query_include_question",
         choices=[
-            False,
+            # False,
             True,
         ],
     )
-    include_query=trial.suggest_categorical(
+    include_query = trial.suggest_categorical(
         name="context_query_include_query",
         choices=[
             False,
             True,
         ],
     )
-    if not any((include_question, include_query)):
-        raise TrialPruned("Must include at least question or query (or both).")
-    include_narrative=trial.suggest_categorical(
+    include_narrative = trial.suggest_categorical(
         name="context_query_include_narrative",
         choices=[
             False,
             True,
         ],
     )
-    include_summary=trial.suggest_categorical(
+    include_summary = trial.suggest_categorical(
         name="context_query_include_summary",
         choices=[
             False,
             True,
         ],
     )
-    include_exact=trial.suggest_categorical(
+    include_exact = trial.suggest_categorical(
         name="context_query_include_exact",
         choices=[
             False,
@@ -131,15 +138,25 @@ def build_retrieval_module(
     pipeline = pipeline >> context_query
 
     # Extract the structured Elasticsearch query from the context.
-    match_title=_suggest_must_should(
+    match_title = suggest_must_should(
         trial=trial,
         name="context_elasticsearch_query_match_title",
     )
-    match_abstract=_suggest_must_should(
+    match_abstract = suggest_must_should(
         trial=trial,
         name="context_elasticsearch_query_match_abstract",
     )
-    if not any((match_title == "must", match_abstract == "must")):
+    match_full_text = suggest_must_should(
+        trial=trial,
+        name="context_elasticsearch_query_match_full_text",
+    )
+    if not any(
+        (
+            match_title == "must",
+            match_abstract == "must",
+            match_full_text == "must",
+        )
+    ):
         raise TrialPruned("Must match at least on title or abstract (or both).")
     context_elasticsearch_query = ContextElasticsearchQueryTransformer(
         require_title=trial.suggest_categorical(
@@ -172,7 +189,8 @@ def build_retrieval_module(
         ),
         match_title=match_title,
         match_abstract=match_abstract,
-        match_mesh_terms=_suggest_must_should(
+        match_full_text=match_full_text,
+        match_mesh_terms=suggest_must_should(
             trial=trial,
             name="context_elasticsearch_query_match_mesh_terms",
         ),
@@ -197,7 +215,7 @@ def build_retrieval_module(
     passaging_enabled = trial.suggest_categorical(
         name="passaging_enabled",
         choices=[
-            False,
+            # False,
             True,
         ],
     )
@@ -220,7 +238,7 @@ def build_retrieval_module(
             max_sentences=trial.suggest_int(
                 name="pubmed_sentence_passager_max_sentences",
                 low=1,
-                high=5,
+                high=3,
             ),
         )
         pipeline = pipeline >> pubmed_sentence_passager
@@ -230,61 +248,69 @@ def build_retrieval_module(
         name="pointwise_reranker_model",
         choices=[
             "castorini/monot5-base-msmarco",
-            "castorini/monot5-3b-msmarco",
-            "castorini/monot5-3b-med-msmarco",
+            # "castorini/monot5-3b-msmarco",
+            # "castorini/monot5-3b-med-msmarco",
             "sentence-transformers/msmarco-distilbert-base-tas-b",
             "sentence-transformers/msmarco-roberta-base-ance-firstp",
             "castorini/tct_colbert-v2-hnp-msmarco",
             None,
         ],
-    ) # type: ignore
+    )  # type: ignore
     pointwise_reranker: Transformer | None
     if pointwise_reranker_model in (
         "castorini/monot5-base-msmarco",
         "castorini/monot5-3b-msmarco",
         "castorini/monot5-3b-med-msmarco",
     ):
-        pointwise_reranker = MonoT5ReRanker(
-            model=pointwise_reranker_model, 
-            verbose=True,
-        )
+        with catch_warnings():
+            simplefilter(action="ignore", category=FutureWarning)
+            pointwise_reranker = MonoT5ReRanker(
+                model=pointwise_reranker_model,
+                batch_size=4,
+                verbose=True,
+            )
     elif pointwise_reranker_model in (
         "sentence-transformers/msmarco-distilbert-base-tas-b",
     ):
         with catch_warnings():
             filterwarnings(
-                action="ignore", 
-                message="TypedStorage is deprecated", 
+                action="ignore",
+                message="TypedStorage is deprecated",
                 category=UserWarning,
             )
+            simplefilter(action="ignore", category=FutureWarning)
             pointwise_reranker = TasB(
                 model_name=pointwise_reranker_model,
+                batch_size=8,
+                verbose=True,
+            )
+    elif pointwise_reranker_model in ("castorini/tct_colbert-v2-hnp-msmarco",):
+        with catch_warnings():
+            simplefilter(action="ignore", category=FutureWarning)
+            pointwise_reranker = TctColBert(
+                model_name=pointwise_reranker_model,
+                batch_size=8,
                 verbose=True,
             )
     elif pointwise_reranker_model in (
-            "castorini/tct_colbert-v2-hnp-msmarco",
+        "sentence-transformers/msmarco-roberta-base-ance-firstp",
     ):
-        pointwise_reranker = TctColBert(
-            model_name=pointwise_reranker_model,
-            verbose=True,
-        )
-    elif pointwise_reranker_model in (
-            "sentence-transformers/msmarco-roberta-base-ance-firstp",
-    ):
-        pointwise_reranker = Ance(
-            model_name=pointwise_reranker_model, 
-            verbose=True,
-        )
+        with catch_warnings():
+            simplefilter(action="ignore", category=FutureWarning)
+            pointwise_reranker = Ance(
+                model_name=pointwise_reranker_model,
+                batch_size=8,
+                verbose=True,
+            )
     else:
         pointwise_reranker = None
     if pointwise_reranker is not None:
-        pointwise_reranker_cutoff=trial.suggest_categorical(
+        pointwise_reranker_cutoff = trial.suggest_categorical(
             name="pointwise_reranker_cutoff",
             choices=[
                 10,
                 50,
-                100,
-            ]
+            ],
         )
         pipeline = CutoffRerank(
             candidates=pipeline,
@@ -297,11 +323,11 @@ def build_retrieval_module(
         name="pairwise_reranker_model",
         choices=[
             "castorini/duot5-base-msmarco",
-            "castorini/duot5-3b-msmarco",
-            "castorini/duot5-3b-med-msmarco",
+            # "castorini/duot5-3b-msmarco",
+            # "castorini/duot5-3b-med-msmarco",
             None,
         ],
-    ) # type: ignore
+    )  # type: ignore
     pairwise_reranker: Transformer | None
     if pairwise_reranker_model in (
         "castorini/duot5-base-msmarco",
@@ -310,23 +336,25 @@ def build_retrieval_module(
     ):
         with catch_warnings():
             filterwarnings(
-                action="ignore", 
+                action="ignore",
                 message="TypedStorage is deprecated",
-                 category=UserWarning,
-                 )
+                category=UserWarning,
+            )
+            simplefilter(action="ignore", category=FutureWarning)
             pairwise_reranker = DuoT5ReRanker(
-                model=pairwise_reranker_model, 
+                model=pairwise_reranker_model,
+                batch_size=4,
                 verbose=True,
             )
     else:
         pairwise_reranker = None
     if pairwise_reranker is not None:
-        pairwise_reranker_cutoff=trial.suggest_categorical(
+        pairwise_reranker_cutoff = trial.suggest_categorical(
             name="pairwise_reranker_cutoff",
             choices=[
                 3,
                 5,
-            ]
+            ],
         )
         pipeline = CutoffRerank(
             candidates=pipeline,
@@ -341,13 +369,14 @@ def build_retrieval_module(
     return retrieval_module
 
 
-def _suggest_language_model_name(trial: Trial, name: str) -> LanguageModelName:
+def suggest_language_model_name(trial: BaseTrial, name: str) -> LanguageModelName:
     language_model_name: LanguageModelName = trial.suggest_categorical(
         name="language_model_name",
         choices=[
             "blablador:Mistral-7B-Instruct-v0.3",
-            # "blablador:Mixtral-8x7B-Instruct-v0.1",
+            "blablador:Mixtral-8x7B-Instruct-v0.1",
             # "blablador:Llama3.1-8B-Instruct",
+            # "openai:gpt-4o-mini-2024-07-18",
         ],
     )  # type: ignore
     return language_model_name
@@ -355,11 +384,20 @@ def _suggest_language_model_name(trial: Trial, name: str) -> LanguageModelName:
 
 def build_generation_module(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> GenerationModule:
     """
     Build a simple generation module based on hyperparameters drawn from the trial.
     """
+
+    context_references_cutoff = trial.suggest_categorical(
+        name="context_references_cutoff",
+        choices=[
+            3,
+            5,
+            10,
+        ],
+    )
 
     summary_predict_type: PredictType = trial.suggest_categorical(
         name="summary_predict_type",
@@ -370,6 +408,7 @@ def build_generation_module(
     )  # type: ignore
     summary_predict = SummaryPredict(
         predict_type=summary_predict_type,
+        references_cutoff=context_references_cutoff,
     )
 
     exact_predict_type: PredictType = trial.suggest_categorical(
@@ -381,9 +420,10 @@ def build_generation_module(
     )  # type: ignore
     exact_predict = ExactPredict(
         predict_type=exact_predict_type,
+        references_cutoff=context_references_cutoff,
     )
 
-    language_model_name: LanguageModelName = _suggest_language_model_name(
+    language_model_name: LanguageModelName = suggest_language_model_name(
         trial=trial,
         name="language_model_name",
     )
@@ -409,7 +449,7 @@ def build_generation_module(
 
 def build_generation_augmented_retrieval_module(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> RetrievalModule:
     """
     Build a generation-augmented retrieval module based on hyperparameters drawn from the trial.
@@ -446,7 +486,7 @@ def build_generation_augmented_retrieval_module(
 
 def build_retrieval_augmented_generation_module(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> GenerationModule:
     """
     Build a retrieval-augmented generation module based on hyperparameters drawn from the trial.
@@ -483,15 +523,15 @@ def build_retrieval_augmented_generation_module(
 
 def build_answering_module_no_augmentation(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> AnsweringModule:
     """
     Build a answering module that uses generation and retrieval modules independently without any augmentation.
     """
 
-    # Build simple generation and retrieval modules.
-    generation_module = build_generation_module(answers, trial)
+    # Build simple retrieval and generation modules.
     retrieval_module = build_retrieval_module(trial)
+    generation_module = build_generation_module(answers, trial)
 
     # Compose answering module.
     return IndependentAnsweringModule(
@@ -502,15 +542,15 @@ def build_answering_module_no_augmentation(
 
 def build_answering_module_independent_augmentation(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> AnsweringModule:
     """
     Build a answering module that uses generation and retrieval modules independently while augmenting generation and retrieval individually.
     """
 
-    # Build augmented generation and retrieval modules.
-    generation_module = build_retrieval_augmented_generation_module(answers, trial)
+    # Build augmented retrieval and generation modules.
     retrieval_module = build_generation_augmented_retrieval_module(answers, trial)
+    generation_module = build_retrieval_augmented_generation_module(answers, trial)
 
     # Compose answering module.
     return IndependentAnsweringModule(
@@ -521,15 +561,15 @@ def build_answering_module_independent_augmentation(
 
 def build_answering_module_cross_augmentation(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> AnsweringModule:
     """
     Build a answering module that uses generation and retrieval modules recurrently while feeding back the outputs from the generation module to the retrieval module and vice-versa.
     """
 
-    # Build simple generation and retrieval modules.
-    generation_module = build_generation_module(answers, trial)
+    # Build simple retrieval and generation modules.
     retrieval_module = build_retrieval_module(trial)
+    generation_module = build_generation_module(answers, trial)
 
     # Compose answering module.
     answering_module = IndependentAnsweringModule(
@@ -551,7 +591,7 @@ def build_answering_module_cross_augmentation(
 
 def build_answering_module(
     answers: Sequence[Answer],
-    trial: Trial,
+    trial: BaseTrial,
 ) -> AnsweringModule:
     """
     Build a answering module with or without augmenting the generation and retrieval modules.
@@ -577,6 +617,8 @@ def build_answering_module(
 
 
 def optimize_answering_module(
+    study_storage_path: Path,
+    study_name: str,
     answers: Sequence[Answer],
     retrieval_measures: Sequence[RetrievalMeasure],
     generation_measures: Sequence[GenerationMeasure],
@@ -584,12 +626,18 @@ def optimize_answering_module(
     timeout: float | None = None,
     parallelism: int = 1,
     progress: bool = False,
-    wandb: bool=False,
+    wandb: bool = False,
+    ray: bool = False,
+    resume: bool = False,
 ) -> Sequence[FrozenTrial]:
+    if ray:
+        ray_init()
+    register_ray()
+
     questions = [answer.as_question() for answer in answers]
     contexts = [question.as_partial_answer() for question in questions]
 
-    def objective(trial: Trial) -> Sequence[float]:
+    def objective(trial: BaseTrial) -> Sequence[float]:
         module = build_answering_module(answers, trial)
         predictions = module.answer_many(contexts)
         retrieval_metrics = (
@@ -605,7 +653,7 @@ def optimize_answering_module(
                 ground_truth=answers,
                 predictions=predictions,
                 measure=measure,
-                language_model_name=_suggest_language_model_name(
+                language_model_name=suggest_language_model_name(
                     trial=trial,
                     name="language_model_name",
                 ),
@@ -614,12 +662,24 @@ def optimize_answering_module(
         )
         return (*retrieval_metrics, *generation_metrics)
 
+    with catch_warnings():
+        simplefilter(action="ignore", category=ExperimentalWarning)
+        storage = JournalStorage(
+            log_storage=JournalFileStorage(
+                file_path=str(study_storage_path), 
+                lock_obj=JournalFileOpenLock(str(study_storage_path)),
+            ),
+        )
     study: Study = create_study(
+        storage=storage,
+        study_name=study_name,
         directions=[StudyDirection.MAXIMIZE]
-        * (len(retrieval_measures) + len(generation_measures))
+        * (len(retrieval_measures) + len(generation_measures)),
+        sampler=TPESampler(),
+        load_if_exists=resume,
     )
     metric_names = [
-        *(str(measure) for measure in retrieval_measures), 
+        *(str(measure) for measure in retrieval_measures),
         *generation_measures,
     ]
     with catch_warnings():
@@ -627,19 +687,33 @@ def optimize_answering_module(
         study.set_metric_names(metric_names)
     callbacks: list[Callable[[Study, FrozenTrial], None]] = []
     if wandb:
-        callbacks.append(WeightsAndBiasesCallback(
-            metric_name=metric_names,
-            wandb_kwargs=dict(
-                project="trec-biogen",
-            ),
-        ))
-    study.optimize(
-        func=objective,
-        n_trials=trials,
-        timeout=timeout,
-        n_jobs=parallelism,
-        show_progress_bar=progress,
-        callbacks=callbacks,
-        catch=[],
-    )
+        callbacks.append(
+            WeightsAndBiasesCallback(
+                metric_name=metric_names,
+                wandb_kwargs=dict(
+                    project="trec-biogen",
+                ),
+            )
+        )
+    if ray:
+        with parallel_backend(backend="ray", n_jobs=-1):
+            study.optimize(
+                func=objective,
+                n_trials=trials,
+                timeout=timeout,
+                n_jobs=parallelism,
+                show_progress_bar=progress,
+                callbacks=callbacks,
+                catch=[],
+            )
+    else:
+        study.optimize(
+            func=objective,
+            n_trials=trials,
+            timeout=timeout,
+            n_jobs=parallelism,
+            show_progress_bar=progress,
+            callbacks=callbacks,
+            catch=[],
+        )
     return study.best_trials
