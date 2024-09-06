@@ -75,9 +75,6 @@ def prepare_trec_submissions(
         for file_path in submissions_study_path.iterdir():
             file_path.unlink()
 
-    # TODO
-    questions = questions[:3]
-
     print("Load study.")
     with catch_warnings():
         simplefilter(action="ignore", category=ExperimentalWarning)
@@ -98,7 +95,8 @@ def prepare_trec_submissions(
         print("Sort best trials (based on previous objective values).")
         best_trials = sorted(
             best_trials, 
-            key=lambda trial: mean(trial.values)
+            key=lambda trial: mean(trial.values),
+            reverse=True,
         )
         best_trials = best_trials[:top_k]
 
@@ -125,7 +123,8 @@ def prepare_trec_submissions(
     print("Sort best trials.")
     best_trials_reevaluated = sorted(
         best_trials_reevaluated, 
-        key=lambda trial: mean(trial.values)
+        key=lambda trial: mean(trial.values),
+        reverse=True,
     )
     contexts = [question.as_partial_answer() for question in questions]
     for i, trial in enumerate(best_trials_reevaluated):
