@@ -6,7 +6,7 @@ from warnings import catch_warnings, simplefilter
 from elasticsearch7_dsl.query import Nested, Query, Bool, Exists, Match, Term, Terms
 from optuna import TrialPruned
 from pandas import DataFrame, Series
-from pyterrier.transformer import Transformer
+from pyterrier import Transformer
 from spacy import Language, load as spacy_load
 from tqdm.auto import tqdm
 

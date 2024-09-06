@@ -1,16 +1,8 @@
 from dataclasses import dataclass, field
 
 from pandas import DataFrame
-from pyterrier.transformer import Transformer
+from pyterrier import Transformer
 
-
-@dataclass(frozen=True)
-class CachableTransformer(Transformer):
-    wrapped: Transformer = field(repr=False)
-    key: str
-
-    def transform(self, topics_or_res: DataFrame) -> DataFrame:
-        return self.wrapped.transform(topics_or_res)
 
 
 @dataclass(frozen=True)

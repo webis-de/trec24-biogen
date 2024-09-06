@@ -13,7 +13,7 @@ from optuna.study.study import load_study
 from optuna.trial import FrozenTrial, BaseTrial, TrialState
 from optuna.storages import JournalStorage, JournalFileOpenLock, JournalFileStorage
 from optuna_integration import WeightsAndBiasesCallback
-from pyterrier.transformer import Transformer
+from pyterrier import Transformer
 from pyterrier_t5 import MonoT5ReRanker, DuoT5ReRanker
 from pyterrier_dr import TasB, TctColBert, Ance
 from ray import init as ray_init

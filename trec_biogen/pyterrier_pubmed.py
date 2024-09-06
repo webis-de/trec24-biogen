@@ -9,8 +9,8 @@ from elasticsearch7 import Elasticsearch
 from elasticsearch7_dsl.query import Query
 from more_itertools import sliding_window
 from pandas import DataFrame, Series
+from pyterrier import Transformer
 from pyterrier.model import add_ranks
-from pyterrier.transformer import Transformer
 from spacy import load as spacy_load, Language
 from spacy.tokens.span import Span
 

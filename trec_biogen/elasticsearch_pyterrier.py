@@ -10,8 +10,8 @@ from elasticsearch7_dsl import Document, Search
 from elasticsearch7_dsl.query import Query, Terms
 from elasticsearch7_dsl.response import Hit
 from pandas import DataFrame, Series
+from pyterrier import Transformer
 from pyterrier.model import add_ranks
-from pyterrier.transformer import Transformer
 from tqdm.auto import tqdm
 
 
