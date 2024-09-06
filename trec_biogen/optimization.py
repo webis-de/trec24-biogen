@@ -198,20 +198,7 @@ def build_retrieval_module(
     )
     pipeline = pipeline >> context_elasticsearch_query
 
-    # Retrieve PubMed articles from Elasticsearch.
-    pubmed_elasticsearch_retrieve = PubMedElasticsearchRetrieve(
-        include_title_text=trial.suggest_categorical(
-            name="pubmed_elasticsearch_retrieve_include_title_text",
-            choices=[False, True],
-        ),
-        include_abstract_text=trial.suggest_categorical(
-            name="pubmed_elasticsearch_retrieve_include_abstract_text",
-            choices=[False, True],
-        ),
-    )
-    pipeline = pipeline >> pubmed_elasticsearch_retrieve
-
-    # Passage the documents into snippets.
+    # Should we extract passages from the documents?
     passaging_enabled = trial.suggest_categorical(
         name="passaging_enabled",
         choices=[
@@ -219,6 +206,21 @@ def build_retrieval_module(
             True,
         ],
     )
+
+    # Retrieve PubMed articles from Elasticsearch.
+    pubmed_elasticsearch_retrieve = PubMedElasticsearchRetrieve(
+        include_title_text=trial.suggest_categorical(
+            name="pubmed_elasticsearch_retrieve_include_title_text",
+            choices=[False, True],
+        ) if not passaging_enabled else False,
+        include_abstract_text=trial.suggest_categorical(
+            name="pubmed_elasticsearch_retrieve_include_abstract_text",
+            choices=[False, True],
+        ) if not passaging_enabled else False,
+    )
+    pipeline = pipeline >> pubmed_elasticsearch_retrieve
+
+    # Passage the documents into snippets.
     if passaging_enabled:
         pubmed_sentence_passager = PubMedSentencePassager(
             include_title_snippets=trial.suggest_categorical(
