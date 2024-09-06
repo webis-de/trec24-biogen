@@ -7,7 +7,7 @@ from elasticsearch7 import Elasticsearch
 from elasticsearch7_dsl.query import Exists, Range
 from pandas import DataFrame
 from pyarrow import Table, field, schema, string, struct
-from ray import init
+from ray import init as ray_init
 from ray.data import read_datasource
 from ray.data.block import DataBatch
 from ray_elasticsearch import ElasticsearchDslDatasink, ElasticsearchDslDatasource
@@ -21,7 +21,7 @@ def index_pubmed_full_texts(
     refetch: bool = False,
     sample: float | None = None,
 ) -> None:
-    init()  # Connect to Ray cluster.
+    ray_init()  # Connect to Ray cluster.
 
     if find_dotenv():
         load_dotenv()  # Load .env file.

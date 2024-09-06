@@ -3,7 +3,7 @@ from typing import Iterable, Sequence
 from warnings import catch_warnings, simplefilter
 
 from pandas import DataFrame, isna
-from pyterrier.transformer import Transformer
+from pyterrier import Transformer
 from tqdm.auto import tqdm
 
 from trec_biogen.model import (

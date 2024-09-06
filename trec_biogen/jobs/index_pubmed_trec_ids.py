@@ -6,7 +6,7 @@ from dotenv import find_dotenv, load_dotenv
 from elasticsearch7 import Elasticsearch
 from pandas import DataFrame
 from pyarrow import Table, field, schema, string, struct, bool_
-from ray import init
+from ray import init as ray_init
 from ray.data import from_items
 from ray.data.block import DataBatch
 from ray_elasticsearch import ElasticsearchDslDatasink
@@ -19,7 +19,7 @@ def index_pubmed_trec_ids(
     trec_ids_path: Path,
     dry_run: bool = False,
 ) -> None:
-    init()  # Connect to Ray cluster.
+    ray_init()  # Connect to Ray cluster.
 
     if find_dotenv():
         load_dotenv()  # Load .env file.
