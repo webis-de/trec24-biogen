@@ -141,7 +141,7 @@ async def iter_full_text_pdf_urls(
         raise ValueError("Cannot fetch more than 100 articles at once.")
 
     url = urljoin(api_base_url, "works")
-    params = {
+    params: dict[str, str | int] = {
         "per-page": len(pubmed_ids),
         "select": ",".join(("ids", "locations")),
         "filter": ",".join((
