@@ -182,6 +182,56 @@ Details/comments:
 Judging precedence: 4
 Submitted!
 
+### webis-6
+
+Tag: webis-6
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
+### webis-7
+
+Tag: webis-7
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
+### webis-8
+
+Tag: webis-8
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
+### webis-9
+
+Tag: webis-9
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
+### webis-10
+
+Tag: webis-10
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
 ### webis-gpt-1
 
 Tag: webis-gpt-1
@@ -314,10 +364,42 @@ Details/comments:
 Judging precedence: 3
 Submitted!
 
+### webis-gpt-7
+
 Tag: webis-gpt-7
-Generation-only? No
+Generation-only?
 Document retrieval model description:
 Answer generation model description:
 Short description:
 Details/comments:
-Judging precedence: 4
+Judging precedence:
+
+### webis-gpt-8
+
+Tag: webis-gpt-8
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
+### webis-gpt-9
+
+Tag: webis-gpt-9
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
+
+### webis-gpt-10
+
+Tag: webis-gpt-10
+Generation-only?
+Document retrieval model description:
+Answer generation model description:
+Short description:
+Details/comments:
+Judging precedence:
