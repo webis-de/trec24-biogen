@@ -185,12 +185,29 @@ Submitted!
 ### webis-6
 
 Tag: webis-6
-Generation-only?
+Generation-only? No
 Document retrieval model description:
+    Retrieve up to 10 PubMed articles from Elasticsearch using BM25.
+    As the query, use the concatenated question, narrative, and simple yes-no, factual, or list answer (if question type is known and if retrieval is run after generation).
+    Stopwords are not removed from the query.
+    Match the query on the article's title, abstract text, and MeSH terms (Elasticsearch BM25, both title and abstract must match, MeSH terms should match, MeSH terms matched to medical entities extracted from the query using sciSpaCy).
+    Exclude PubMed articles of non-peer-reviewed publication types.
+    After retrieval, split passages from the retrieved article's abstract text by splitting it into sentences and returning all sentence n-grams up to 3 sentences. The full title is also used as a separate passage.
+    Re-rank up to 10 passages pointwise with a monoT5 model (castorini/monot5-base-msmarco).
 Answer generation model description:
+    Generate a summary answer for each question with DSPy using a Mistral model (Mistral-7B-Instruct-v0.3, via Blablador API).
+    Give the question and the top-10 passages to the model as context (numbered by rank), and prompt the model to return a summary answer with references (by rank) given in the text.
+    Using DSPy, optimize the prompt by labeled few-shot prompting with 3 examples from the BioASQ 12b train set.
+    After generation, convert internal reference numbering back to PubMed IDs.
 Short description:
+    Use retrieval and generation as above, while augmenting both retrieval and generation independently.
 Details/comments:
-Judging precedence:
+    Using the retrieval and generation modules as described above, independently augment the generation module with retrieval and the retrieval module with generation.
+    For generation-augmented retrieval, augment 3 times while not feeding back retrieval results to the generation module.
+    For retrieval-augmented generation, augment 3 times while feeding back generation results to the retrieval module.
+    Retrieval is implemented using PyTerrier.
+    Generation is implemented using DSPy.
+Judging precedence: 0 (run effectively uses the same config as webis-3)
 
 ### webis-7
 
