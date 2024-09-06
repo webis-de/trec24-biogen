@@ -367,39 +367,63 @@ Submitted!
 ### webis-gpt-7
 
 Tag: webis-gpt-7
-Generation-only?
+Generation-only? Yes
 Document retrieval model description:
+    Not used.
 Answer generation model description:
+    Generate a summary answer for each question with DSPy using a GPT-4o mini model (gpt-4o-mini-2024-07-18).
+    Give the question to the model and prompt the model to return a summary answer.
+    Using DSPy, optimize the prompt by labeled few-shot prompting with 3 examples from the BioASQ 12b train set.
 Short description:
+    Use generation as above, while not augmenting the generation.
 Details/comments:
-Judging precedence:
+    Generation is implemented using DSPy.
+Judging precedence: 0 (run effectively uses the same config as webis-gpt-1)
 
 ### webis-gpt-8
 
 Tag: webis-gpt-8
-Generation-only?
+Generation-only? Yes
 Document retrieval model description:
+    Not used.
 Answer generation model description:
+    Generate a summary answer for each question with DSPy using a GPT-4o mini model (gpt-4o-mini-2024-07-18).
+    Give the question to the model and prompt the model to return a summary answer.
+    Using DSPy, optimize the prompt by labeled few-shot prompting with 3 examples from the BioASQ 12b train set.
 Short description:
+    Use generation as above, while not augmenting the generation.
 Details/comments:
-Judging precedence:
+    Generation is implemented using DSPy.
+Judging precedence: 0 (run effectively uses the same config as webis-gpt-1)
 
 ### webis-gpt-9
 
 Tag: webis-gpt-9
-Generation-only?
+Generation-only? Yes
 Document retrieval model description:
+    Not used.
 Answer generation model description:
+    Generate a summary answer for each question with DSPy using a GPT-4o mini model (gpt-4o-mini-2024-07-18).
+    Give the question to the model and prompt the model to return a summary answer.
+    Using DSPy, optimize the prompt by labeled few-shot prompting with 3 examples from the BioASQ 12b train set.
 Short description:
+    Use generation as above, while not augmenting the generation.
 Details/comments:
-Judging precedence:
+    Generation is implemented using DSPy.
+Judging precedence: 0 (run effectively uses the same config as webis-gpt-1)
 
 ### webis-gpt-10
 
 Tag: webis-gpt-10
-Generation-only?
+Generation-only? Yes
 Document retrieval model description:
+    Not used.
 Answer generation model description:
+    Generate a summary answer for each question with DSPy using a GPT-4o mini model (gpt-4o-mini-2024-07-18).
+    Give the question to the model and prompt the model to return a summary answer.
+    Using DSPy, optimize the prompt by labeled few-shot prompting with 3 examples from the BioASQ 12b train set.
 Short description:
+    Use generation as above, while not augmenting the generation.
 Details/comments:
-Judging precedence:
+    Generation is implemented using DSPy.
+Judging precedence: 0 (run effectively uses the same config as webis-gpt-1)
