@@ -3,6 +3,7 @@ from typing import Literal, Mapping, TypeAlias
 
 from dspy import LM as DSPyLanguageModel, OpenAI as DSPyOpenAI
 from langchain_core.language_models import BaseLanguageModel as LangchainLanguageModel
+from langchain_openai.chat_models import ChatOpenAI as LangchainChatOpenAI
 from langchain_openai.llms import OpenAI as LangchainOpenAI
 from pydantic.v1.types import SecretStr
 
@@ -96,8 +97,7 @@ def get_langchain_language_model(name: LanguageModelName) -> LangchainLanguageMo
     elif (
         name == "openai:gpt-4o-mini-2024-07-18"
     ):
-        blablador_name = _BLABLADOR_MODEL_NAMES[name]
-        return LangchainOpenAI(
+        return LangchainChatOpenAI(
             model=name.removeprefix("openai:"),
             api_key=SecretStr(environ["OPENAI_API_KEY"]),
             base_url="https://api.openai.com/v1/",
