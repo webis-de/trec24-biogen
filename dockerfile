@@ -1,4 +1,4 @@
-FROM python:3.12.6-slim as python-base
+FROM python:3.12.7-slim as python-base
 
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get -y update && \
