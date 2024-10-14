@@ -1,6 +1,6 @@
 # 🏥 trec-biogen
 
-Webis at TREC 2024 BioGen.
+Webis at [TREC 2024 BioGen](https://dmice.ohsu.edu/trec-biogen/index.html).
 
 ## Installation
 
