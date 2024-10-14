@@ -56,9 +56,9 @@ pytest .                       # Unit tests
 
 ## Contribute
 
-If you have found an important feature missing from our tool, please suggest it by creating an [issue](https://github.com/heinrichreimer/trec-biogen/issues). We also gratefully accept [pull requests](https://github.com/heinrichreimer/trec-biogen/pulls)!
+If you have found an important feature missing from our tool, please suggest it by creating an [issue](https://github.com/janheinrichmerker/trec-biogen/issues). We also gratefully accept [pull requests](https://github.com/janheinrichmerker/trec-biogen/pulls)!
 
-If you are unsure about anything, post an [issue](https://github.com/heinrichreimer/trec-biogen/issues/new) or contact us:
+If you are unsure about anything, post an [issue](https://github.com/janheinrichmerker/trec-biogen/issues/new) or contact us:
 
 - [heinrich.reimer@uni-jena.de](mailto:heinrich.reimer@uni-jena.de)
 

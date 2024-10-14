@@ -21,7 +21,7 @@ dependencies = [
     "annotated-types~=0.7.0",
     "certifi~=2024.7",
     "cyclopts~=2.9",
-    "dspy-ai~=2.4.13",
+    "dspy-ai~=2.5.0",
     "elasticsearch7~=7.17",
     "elasticsearch7-dsl~=7.3",
     "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl",
@@ -35,19 +35,19 @@ dependencies = [
     "pandas~=2.0",
     "pyarrow~=17.0",
     "pydantic[email]~=2.5",
-    "pypdf~=4.2",
+    "pypdf~=5.0",
     "pyterrier-dr @ git+https://github.com/terrierteam/pyterrier_dr.git@123a5d0e76824b275bad910f76547b811baebebb",
     "pyterrier-t5 @ git+https://github.com/terrierteam/pyterrier_t5.git@679e3320b0f7c997de108bc44f66ef15fba72f08",
     "python-dotenv~=1.0",
     "python-terrier~=0.11.0",
     "ragas~=0.1.15",
-    "ray[default,data]~=2.35.0",
+    "ray[default,data]~=2.37.0",
     "ray-elasticsearch~=0.2.2",
     "rouge-score~=0.1.2",
     "scikit-learn~=1.5",
     "spacy~=3.7",
     "tqdm~=4.64",
-    "wandb~=0.17.8",
+    "wandb~=0.18.1",
 ]
 dynamic = ["version"]
 
@@ -64,8 +64,8 @@ tests = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/heinrichreimer/trec-biogen"
-"Bug Tracker" = "https://github.com/heinrichreimer/trec-biogen/issues"
+"Homepage" = "https://github.com/janheinrichmerker/trec-biogen"
+"Bug Tracker" = "https://github.com/janheinrichmerker/trec-biogen/issues"
 
 [project.scripts]
 trec-biogen = "trec_biogen.cli:app"
