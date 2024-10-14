@@ -1,7 +1,7 @@
 [project]
 name = "trec-biogen"
 authors = [
-    {name = "Jan Heinrich Reimer", email = "heinrich.reimer@uni-jena.de"},
+    {name = "Jan Heinrich Merker", email = "heinrich.merker@uni-jena.de"},
 ]
 description = "Webis at TREC 2024 BioGen."
 readme = "README.md"

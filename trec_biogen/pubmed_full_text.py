@@ -212,7 +212,7 @@ async def get_full_text_dict(pubmed_ids: Collection[str]) -> Mapping[str, str | 
     connector = TCPConnector(ssl=ssl_context)
     cookie_jar = CookieJar(unsafe=True)
     headers = {
-        "User-Agent": "Webis PubMed Full Text Indexing <heinrich.reimer@uni-jena.de>",
+        "User-Agent": "Webis PubMed Full Text Indexing <heinrich.merker@uni-jena.de>",
     }
     api_timeout = ClientTimeout(total=120, connect=15)
     pdf_timeout = ClientTimeout(total=300, connect=30)
