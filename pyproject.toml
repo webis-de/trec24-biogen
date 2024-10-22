@@ -59,7 +59,7 @@ tests = [
     "pyarrow-stubs~=10.0",
     "pytest~=8.0",
     "pytest-cov~=5.0",
-    "ruff~=0.6.1",
+    "ruff~=0.7.0",
     "types-tqdm~=4.66",
 ]
 
