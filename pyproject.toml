@@ -64,8 +64,8 @@ tests = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/janheinrichmerker/trec-biogen"
-"Bug Tracker" = "https://github.com/janheinrichmerker/trec-biogen/issues"
+"Homepage" = "https://github.com/webis-de/trec24-biogen"
+"Bug Tracker" = "https://github.com/webis-de/trec24-biogen/issues"
 
 [project.scripts]
 trec-biogen = "trec_biogen.cli:app"
