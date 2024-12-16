@@ -47,7 +47,7 @@ dependencies = [
     "scikit-learn~=1.5",
     "spacy~=3.7",
     "tqdm~=4.64",
-    "wandb~=0.18.1",
+    "wandb~=0.19.1",
 ]
 dynamic = ["version"]
 
