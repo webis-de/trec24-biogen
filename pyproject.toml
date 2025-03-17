@@ -21,7 +21,7 @@ dependencies = [
     "annotated-types~=0.7.0",
     "certifi~=2024.7",
     "cyclopts~=3.0",
-    "dspy-ai~=2.5.0",
+    "dspy-ai~=2.6.12",
     "elasticsearch7~=7.17",
     "elasticsearch7-dsl~=7.3",
     "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl",
