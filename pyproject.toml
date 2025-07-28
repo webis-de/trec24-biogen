@@ -33,7 +33,7 @@ dependencies = [
     "optuna~=4.0",
     "optuna-integration~=4.0",
     "pandas~=2.0",
-    "pyarrow~=20.0",
+    "pyarrow~=21.0",
     "pydantic[email]~=2.5",
     "pypdf~=5.0",
     "pyterrier-dr @ git+https://github.com/terrierteam/pyterrier_dr.git@123a5d0e76824b275bad910f76547b811baebebb",
