@@ -73,7 +73,7 @@ trec-biogen = "trec_biogen.cli:app"
 [build-system]
 requires = [
     "setuptools~=80.0",
-    "setuptools-scm~=8.0",    
+    "setuptools-scm~=9.2",    
 ]
 build-backend = "setuptools.build_meta"
 
