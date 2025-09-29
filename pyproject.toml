@@ -35,7 +35,7 @@ dependencies = [
     "pandas~=2.0",
     "pyarrow~=21.0",
     "pydantic[email]~=2.5",
-    "pypdf~=5.0",
+    "pypdf~=6.1",
     "pyterrier-dr @ git+https://github.com/terrierteam/pyterrier_dr.git@123a5d0e76824b275bad910f76547b811baebebb",
     "pyterrier-t5 @ git+https://github.com/terrierteam/pyterrier_t5.git@679e3320b0f7c997de108bc44f66ef15fba72f08",
     "python-dotenv~=1.0",
