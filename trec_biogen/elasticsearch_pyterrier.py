@@ -72,7 +72,8 @@ class ElasticsearchRetrieve(Generic[T], Transformer):
             for hit in hits
         ])
         if len(res) == 0:
-            warn(UserWarning(f"Did not find any results for query: {dumps({"query": query.to_dict()})}"))
+            query_dump = dumps({"query": query.to_dict()})
+            warn(UserWarning(f"Did not find any results for query: {query_dump}"))
             
             # Fix columns when no results could be retrieved.
             res = DataFrame(columns=["qid", "query", "docno", "score"])
